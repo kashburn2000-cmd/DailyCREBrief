@@ -1,0 +1,72 @@
+name: Daily CRE Finance Brief
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sends the CRE Finance Brief on weekday mornings, plus a manual trigger.
+#
+# IMPORTANT: GitHub Actions cron is ALWAYS in UTC and does NOT observe daylight
+# saving time. The schedule below is 11:00 UTC, Monday–Friday:
+#   * During EST (winter, UTC-5)  -> 06:00 America/New_York
+#   * During EDT (summer, UTC-4)  -> 07:00 America/New_York
+# To shift the US-Eastern send time, change the hour in the cron string:
+#   send ~7am ET year-round-ish? pick your tradeoff — e.g. "0 12 * * 1-5" is
+#   07:00 EST / 08:00 EDT. There is no way to make cron auto-adjust for DST.
+# Cron format: "minute hour day-of-month month day-of-week" (UTC).
+# Note: GitHub may delay scheduled runs by a few minutes under load.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    - cron: "0 11 * * 1-5"   # 11:00 UTC, Mon–Fri  (06:00 EST / 07:00 EDT)
+  workflow_dispatch:          # lets you run it manually from the Actions tab
+    inputs:
+      dry_run:
+        description: "Dry run (render only, do NOT send email)"
+        type: boolean
+        default: false
+
+# Avoid overlapping runs if a manual trigger lands on top of the schedule.
+concurrency:
+  group: cre-finance-brief
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  send-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Send the CRE Finance Brief
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          RECIPIENTS: ${{ secrets.RECIPIENTS }}
+          # Optional overrides — set as secrets or repo variables if you want to
+          # change them without editing code. Defaults apply if unset.
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          NEWS_WINDOW_HOURS: ${{ vars.NEWS_WINDOW_HOURS }}
+          BRIEF_TIMEZONE: ${{ vars.BRIEF_TIMEZONE }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "Manual dry run — rendering without sending."
+            python -m cre_brief --no-send --out ""
+          else
+            python -m cre_brief
+          fi

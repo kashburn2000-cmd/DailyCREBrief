@@ -1,0 +1,6 @@
+# CRE Finance Brief — runtime dependencies
+# Kept intentionally minimal so the GitHub Actions run is fast and free.
+
+requests>=2.31,<3        # HTTP client for FRED, Gemini and Resend REST APIs
+feedparser>=6.0,<7       # Robust RSS/Atom parsing with graceful failure handling
+python-dotenv>=1.0,<2    # Load a local .env file for testing (no-op in CI)
