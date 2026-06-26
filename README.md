@@ -188,8 +188,10 @@ Then add **one** delivery pair:
 | `GMAIL_APP_PASSWORD` — 16-char code | `SENDER_EMAIL` — `Name <brief@yourdomain.com>` |
 
 Optional (override defaults without editing code): `GEMINI_MODEL` and
-`SENDER_NAME` as **secrets**; `NEWS_WINDOW_HOURS` and `BRIEF_TIMEZONE` as repo
-**Variables** (Settings → Secrets and variables → Actions → *Variables* tab).
+`SENDER_NAME` as **secrets**; `NEWS_WINDOW_HOURS`, `BRIEF_TIMEZONE`, and
+`DELIVERY_METHOD` (`resend` or `gmail`, to force one even if both pairs of
+secrets exist) as repo **Variables** (Settings → Secrets and variables → Actions
+→ *Variables* tab).
 
 ### Trigger a manual test run
 **Actions → Daily CRE Finance Brief → Run workflow**. Tick **Dry run** to render

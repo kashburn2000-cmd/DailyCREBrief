@@ -269,6 +269,29 @@ def test_delivery_method_selection_and_validate():
     raise AssertionError("expected ConfigError when no delivery method configured")
 
 
+def test_delivery_override_forces_method():
+    from cre_brief.config import Config, ConfigError
+    # Both configured, but the override forces Resend.
+    both = Config(gemini_api_key="g", fred_api_key="f",
+                  gmail_address="me@gmail.com", gmail_app_password="p",
+                  resend_api_key="re_x", sender_email="a@b.com",
+                  delivery_override="resend", recipients=["a@x.com"])
+    assert both.delivery_method == "resend"
+    both.validate(require_send=True)
+    # Override to a method whose secrets are absent -> None, and validate rejects.
+    forced = Config(gemini_api_key="g", fred_api_key="f",
+                    gmail_address="me@gmail.com", gmail_app_password="p",
+                    delivery_override="resend", recipients=["a@x.com"])
+    assert forced.delivery_method is None
+    try:
+        forced.validate(require_send=True)
+    except ConfigError as exc:
+        assert "resend" in str(exc).lower()
+        print("  ✓ DELIVERY_METHOD override forces the method (and validates it)")
+        return
+    raise AssertionError("expected ConfigError when forced method lacks its secrets")
+
+
 def test_window_hours_clamped():
     import os
     from cre_brief.config import Config
@@ -363,6 +386,7 @@ def main():
         test_gmail_send_per_recipient,
         test_gmail_login_failure_marks_all_failed,
         test_delivery_method_selection_and_validate,
+        test_delivery_override_forces_method,
         test_window_hours_clamped,
         test_gemini_backoff_then_success,
         test_gemini_fails_fast_on_400,

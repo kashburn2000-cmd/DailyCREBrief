@@ -59,11 +59,14 @@ jobs:
           # Delivery — set ONE of the two pairs below as secrets:
           #   Gmail (no domain needed):  GMAIL_ADDRESS + GMAIL_APP_PASSWORD
           #   Resend (needs a domain):   RESEND_API_KEY + SENDER_EMAIL
+          # Optional: set repo Variable DELIVERY_METHOD to "resend" or "gmail" to
+          # force one even if the other's secrets are still present.
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_NAME: ${{ secrets.SENDER_NAME }}
+          DELIVERY_METHOD: ${{ vars.DELIVERY_METHOD }}
           # Optional overrides — set as secrets or repo variables if you want to
           # change them without editing code. Defaults apply if unset.
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}

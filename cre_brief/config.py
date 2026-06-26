@@ -66,21 +66,37 @@ class Config:
     resend_api_key: str = ""
     sender_email: str = ""
     sender_name: str = DEFAULT_SENDER_NAME
+    # Optional override: "gmail" or "resend". Blank = auto-detect. Use this to
+    # force a method even when the other's secrets are still present.
+    delivery_override: str = ""
     recipients: List[str] = field(default_factory=list)
     gemini_model: str = DEFAULT_GEMINI_MODEL
     news_window_hours: int = 36
     timezone: str = DEFAULT_TIMEZONE
 
     @property
-    def delivery_method(self) -> Optional[str]:
-        """Pick how to send: prefer Gmail if configured, else Resend, else None.
+    def _gmail_ready(self) -> bool:
+        return bool(self.gmail_address and self.gmail_app_password)
 
-        Gmail wins when both are set because it needs no domain — the common case
-        for personal use. Set only one in practice.
+    @property
+    def _resend_ready(self) -> bool:
+        return bool(self.resend_api_key and self.sender_email)
+
+    @property
+    def delivery_method(self) -> Optional[str]:
+        """Which method to send with, or None if the chosen one isn't configured.
+
+        ``DELIVERY_METHOD`` (delivery_override) forces a choice when set; otherwise
+        Gmail wins if configured (it needs no domain), else Resend.
         """
-        if self.gmail_address and self.gmail_app_password:
+        override = (self.delivery_override or "").lower()
+        if override == "gmail":
+            return "gmail" if self._gmail_ready else None
+        if override == "resend":
+            return "resend" if self._resend_ready else None
+        if self._gmail_ready:
             return "gmail"
-        if self.resend_api_key and self.sender_email:
+        if self._resend_ready:
             return "resend"
         return None
 
@@ -106,6 +122,7 @@ class Config:
             resend_api_key=os.getenv("RESEND_API_KEY", "").strip(),
             sender_email=os.getenv("SENDER_EMAIL", "").strip(),
             sender_name=os.getenv("SENDER_NAME", DEFAULT_SENDER_NAME).strip() or DEFAULT_SENDER_NAME,
+            delivery_override=os.getenv("DELIVERY_METHOD", "").strip(),
             recipients=_split_csv(os.getenv("RECIPIENTS")),
             gemini_model=os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL,
             news_window_hours=window,
@@ -130,10 +147,16 @@ class Config:
             if not self.recipients:
                 missing.append("RECIPIENTS")
             if self.delivery_method is None:
-                missing.append(
-                    "a delivery method — set either GMAIL_ADDRESS + GMAIL_APP_PASSWORD "
-                    "(no domain needed) or RESEND_API_KEY + SENDER_EMAIL"
-                )
+                override = (self.delivery_override or "").lower()
+                if override == "resend":
+                    missing.append("RESEND_API_KEY + SENDER_EMAIL (DELIVERY_METHOD=resend)")
+                elif override == "gmail":
+                    missing.append("GMAIL_ADDRESS + GMAIL_APP_PASSWORD (DELIVERY_METHOD=gmail)")
+                else:
+                    missing.append(
+                        "a delivery method — set either GMAIL_ADDRESS + GMAIL_APP_PASSWORD "
+                        "(no domain needed) or RESEND_API_KEY + SENDER_EMAIL"
+                    )
         if missing:
             raise ConfigError(
                 "Missing required configuration: "
