@@ -207,6 +207,68 @@ def test_render_preserves_newlines():
     print("  ✓ html prose preserves newlines as <br> and escapes specials")
 
 
+def test_gmail_send_per_recipient():
+    from cre_brief.mailer import send_via_gmail
+    sent = []
+
+    class FakeSMTP:
+        def login(self, addr, pw):
+            assert pw == "abcdefghijklmnop", "app-password spaces should be stripped"
+        def sendmail(self, frm, to, raw):
+            sent.append((to[0], raw))
+        def quit(self):
+            pass
+
+    res = send_via_gmail(
+        "me@gmail.com", "abcd efgh ijkl mnop", "CRE Brief",
+        ["a@x.com", "b@y.com"], "Subj", "<b>hi</b>", "hi",
+        smtp_factory=lambda: FakeSMTP(),
+    )
+    assert res.sent == ["a@x.com", "b@y.com"] and not res.failed
+    _, raw = sent[0]
+    assert "text/plain" in raw and "text/html" in raw   # multipart/alternative
+    assert "CRE Brief" in raw and "me@gmail.com" in raw  # display name + from
+    print("  ✓ gmail sends one multipart message per recipient")
+
+
+def test_gmail_login_failure_marks_all_failed():
+    from cre_brief.mailer import send_via_gmail
+
+    class BadSMTP:
+        def login(self, *a):
+            raise OSError("bad app password")
+        def quit(self):
+            pass
+
+    res = send_via_gmail("me@gmail.com", "x", "n", ["a@x.com", "b@y.com"],
+                         "s", "<b>h</b>", "h", smtp_factory=lambda: BadSMTP())
+    assert res.failed == ["a@x.com", "b@y.com"] and not res.sent
+    print("  ✓ gmail login failure fails all recipients cleanly (no crash)")
+
+
+def test_delivery_method_selection_and_validate():
+    from cre_brief.config import Config, ConfigError
+    gmail = Config(gemini_api_key="g", fred_api_key="f", gmail_address="me@gmail.com",
+                   gmail_app_password="p", recipients=["a@x.com"])
+    assert gmail.delivery_method == "gmail"
+    gmail.validate(require_send=True)  # should not raise
+
+    resend = Config(gemini_api_key="g", fred_api_key="f", resend_api_key="re_x",
+                    sender_email="a@b.com", recipients=["a@x.com"])
+    assert resend.delivery_method == "resend"
+    resend.validate(require_send=True)
+
+    none = Config(gemini_api_key="g", fred_api_key="f", recipients=["a@x.com"])
+    assert none.delivery_method is None
+    none.validate(require_send=False)  # dry run only needs gemini + fred
+    try:
+        none.validate(require_send=True)
+    except ConfigError:
+        print("  ✓ delivery method auto-selects; send without one is rejected")
+        return
+    raise AssertionError("expected ConfigError when no delivery method configured")
+
+
 def test_window_hours_clamped():
     import os
     from cre_brief.config import Config
@@ -298,6 +360,9 @@ def main():
         test_fed_funds_single_bound,
         test_render_html_and_text,
         test_render_preserves_newlines,
+        test_gmail_send_per_recipient,
+        test_gmail_login_failure_marks_all_failed,
+        test_delivery_method_selection_and_validate,
         test_window_hours_clamped,
         test_gemini_backoff_then_success,
         test_gemini_fails_fast_on_400,

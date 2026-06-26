@@ -16,7 +16,7 @@ from .config import Config
 from .feeds import collect_items, items_for_prompt
 from .fred import FredClient, build_tape, tape_facts_for_prompt
 from .gemini import GeminiClient
-from .mailer import send_brief
+from .mailer import send_via_gmail, send_via_resend
 from .models import Brief
 from .render import render_html, render_text
 from .synthesize import synthesize
@@ -85,6 +85,7 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
     if not send:
         print("\n" + "=" * 70)
         print(f"DRY RUN — would send: {brief.subject}")
+        print(f"Delivery method: {config.delivery_method or '(none configured)'}")
         if config.recipients:
             print(f"Recipients: {', '.join(config.recipients)}")
         else:
@@ -107,14 +108,27 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
         log.error("No FRED data and no news items — refusing to send an empty brief.")
         return 1
 
-    result = send_brief(
-        api_key=config.resend_api_key,
-        sender=config.sender_email,
-        recipients=config.recipients,
-        subject=brief.subject,
-        html=html,
-        text=text,
-    )
+    method = config.delivery_method
+    log.info("Sending via %s to %d recipient(s)", method, len(config.recipients))
+    if method == "gmail":
+        result = send_via_gmail(
+            gmail_address=config.gmail_address,
+            app_password=config.gmail_app_password,
+            sender_name=config.sender_name,
+            recipients=config.recipients,
+            subject=brief.subject,
+            html=html,
+            text=text,
+        )
+    else:
+        result = send_via_resend(
+            api_key=config.resend_api_key,
+            sender=config.sender_email,
+            recipients=config.recipients,
+            subject=brief.subject,
+            html=html,
+            text=text,
+        )
     if not result.sent:
         log.error("No emails were delivered")
         return 1

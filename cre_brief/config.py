@@ -53,16 +53,36 @@ class ConfigError(RuntimeError):
     """Raised when required configuration is missing for the requested mode."""
 
 
+DEFAULT_SENDER_NAME = "CRE Finance Brief"
+
+
 @dataclass
 class Config:
     gemini_api_key: str = ""
     fred_api_key: str = ""
+    # Delivery — Gmail (no domain needed) OR Resend (needs a verified domain).
+    gmail_address: str = ""
+    gmail_app_password: str = ""
     resend_api_key: str = ""
     sender_email: str = ""
+    sender_name: str = DEFAULT_SENDER_NAME
     recipients: List[str] = field(default_factory=list)
     gemini_model: str = DEFAULT_GEMINI_MODEL
     news_window_hours: int = 36
     timezone: str = DEFAULT_TIMEZONE
+
+    @property
+    def delivery_method(self) -> Optional[str]:
+        """Pick how to send: prefer Gmail if configured, else Resend, else None.
+
+        Gmail wins when both are set because it needs no domain — the common case
+        for personal use. Set only one in practice.
+        """
+        if self.gmail_address and self.gmail_app_password:
+            return "gmail"
+        if self.resend_api_key and self.sender_email:
+            return "resend"
+        return None
 
     # ------------------------------------------------------------------
     @classmethod
@@ -81,8 +101,11 @@ class Config:
         return cls(
             gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
             fred_api_key=os.getenv("FRED_API_KEY", "").strip(),
+            gmail_address=os.getenv("GMAIL_ADDRESS", "").strip(),
+            gmail_app_password=os.getenv("GMAIL_APP_PASSWORD", "").strip(),
             resend_api_key=os.getenv("RESEND_API_KEY", "").strip(),
             sender_email=os.getenv("SENDER_EMAIL", "").strip(),
+            sender_name=os.getenv("SENDER_NAME", DEFAULT_SENDER_NAME).strip() or DEFAULT_SENDER_NAME,
             recipients=_split_csv(os.getenv("RECIPIENTS")),
             gemini_model=os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL,
             news_window_hours=window,
@@ -94,7 +117,9 @@ class Config:
         """Raise :class:`ConfigError` if anything required for the mode is missing.
 
         Content generation always needs Gemini + FRED keys. Delivery additionally
-        needs the Resend key, a verified sender, and at least one recipient.
+        needs at least one recipient and a configured delivery method — EITHER
+        Gmail (GMAIL_ADDRESS + GMAIL_APP_PASSWORD, no domain needed) OR Resend
+        (RESEND_API_KEY + SENDER_EMAIL, needs a verified domain).
         """
         missing: List[str] = []
         if not self.gemini_api_key:
@@ -102,16 +127,17 @@ class Config:
         if not self.fred_api_key:
             missing.append("FRED_API_KEY")
         if require_send:
-            if not self.resend_api_key:
-                missing.append("RESEND_API_KEY")
-            if not self.sender_email:
-                missing.append("SENDER_EMAIL")
             if not self.recipients:
                 missing.append("RECIPIENTS")
+            if self.delivery_method is None:
+                missing.append(
+                    "a delivery method — set either GMAIL_ADDRESS + GMAIL_APP_PASSWORD "
+                    "(no domain needed) or RESEND_API_KEY + SENDER_EMAIL"
+                )
         if missing:
             raise ConfigError(
                 "Missing required configuration: "
-                + ", ".join(missing)
+                + "; ".join(missing)
                 + ". Set them as env vars / GitHub Actions secrets (see .env.example)."
             )
 

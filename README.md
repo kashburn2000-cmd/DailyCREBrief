@@ -5,7 +5,7 @@ that emails a small fixed list every weekday morning. It runs entirely on free
 infrastructure — **$0 to operate**: no server, no database, no paid APIs.
 
 ```
-GitHub Actions (cron)  →  FRED (rates)  +  RSS (news)  →  Gemini (writing)  →  Resend (email)
+GitHub Actions (cron)  →  FRED (rates)  +  RSS (news)  →  Gemini (writing)  →  Gmail / Resend (email)
 ```
 
 Each edition has a fixed structure a reader can skim in 60 seconds:
@@ -55,7 +55,7 @@ DailyCREBrief/
 │   ├── gemini.py        # Gemini REST client w/ exponential backoff on 429/503
 │   ├── synthesize.py    # strict prompt + structured-output parsing
 │   ├── render.py        # HTML + plaintext email rendering
-│   ├── mailer.py        # Resend delivery (one message per recipient)
+│   ├── mailer.py        # Gmail (SMTP) or Resend delivery (one message per recipient)
 │   ├── models.py        # shared dataclasses
 │   └── brief.py         # end-to-end orchestration
 ├── main.py              # convenience entry point (== python -m cre_brief)
@@ -95,14 +95,25 @@ DailyCREBrief/
 2. Go to **https://fredaccount.stlouisfed.org/apikeys** and request a key
    (a 32-character lowercase string, issued instantly).
 
-### Resend — email delivery
+### Email delivery — pick ONE of two free options
+
+The brief auto-detects which to use from your secrets (Gmail wins if both are set).
+
+**Option A — Gmail (recommended; no domain needed).** Sends from your own Gmail.
+1. Turn on **2-Step Verification**: https://myaccount.google.com/security
+2. Create an **App Password**: https://myaccount.google.com/apppasswords — Google
+   gives you a 16-character code. Copy it (spaces don't matter).
+3. You'll set two secrets: `GMAIL_ADDRESS` (your `you@gmail.com`) and
+   `GMAIL_APP_PASSWORD` (that code). Optional: `SENDER_NAME` for the display name.
+   * Limit ~500 recipients/day — far more than a small newsletter needs.
+
+**Option B — Resend (needs a domain you own).** Branded from-address.
 1. Sign up at **https://resend.com** (free tier: 100 emails/day, 3,000/month).
 2. **API Keys → Create API Key** (starts with `re_`). Copy it now — it's shown once.
-3. **Verify a sender domain:** Resend dashboard → **Domains → Add Domain**, then
-   add the DNS records it gives you (SPF/DKIM, optionally DMARC) at your DNS
-   provider and click **Verify**. Your `SENDER_EMAIL` must be on that domain.
-   * No domain yet? You can still test: send from `onboarding@resend.dev`, but
-     only to your own Resend account email.
+3. **Verify a sender domain:** Resend dashboard → **Domains → Add Domain**, add the
+   DNS records it gives you, and click **Verify**. `SENDER_EMAIL` must be on that
+   domain. (No domain? Use Option A instead — it needs none.)
+4. Set `RESEND_API_KEY` and `SENDER_EMAIL`.
 
 ---
 
@@ -126,8 +137,10 @@ python -m cre_brief --no-send          # or: python main.py --no-send
 python -m cre_brief --no-send -v        # add debug logging
 ```
 
-A dry run needs only `GEMINI_API_KEY` and `FRED_API_KEY`. To actually send,
-also set `RESEND_API_KEY`, `SENDER_EMAIL`, and `RECIPIENTS`, then drop `--no-send`:
+A dry run needs only `GEMINI_API_KEY` and `FRED_API_KEY`. To actually send, also
+set `RECIPIENTS` and one delivery method (Gmail: `GMAIL_ADDRESS` +
+`GMAIL_APP_PASSWORD`, or Resend: `RESEND_API_KEY` + `SENDER_EMAIL`), then drop
+`--no-send`:
 
 ```bash
 python -m cre_brief
@@ -159,16 +172,23 @@ git push -u origin main           # or your branch
 In your repo: **Settings → Secrets and variables → Actions → New repository secret**.
 Add each of:
 
+Always add these three:
+
 | Secret           | Value                                                        |
 | ---------------- | ----------------------------------------------------------- |
 | `GEMINI_API_KEY` | from Google AI Studio                                       |
 | `FRED_API_KEY`   | from FRED                                                   |
-| `RESEND_API_KEY` | from Resend (`re_…`)                                        |
-| `SENDER_EMAIL`   | a from-address on your verified Resend domain               |
 | `RECIPIENTS`     | comma-separated list, e.g. `a@x.com, b@y.com`              |
 
-Optional (only if you want to override defaults without editing code):
-`GEMINI_MODEL` as a **secret**; `NEWS_WINDOW_HOURS` and `BRIEF_TIMEZONE` as repo
+Then add **one** delivery pair:
+
+| If using Gmail (no domain) | If using Resend (has domain) |
+| -------------------------- | ---------------------------- |
+| `GMAIL_ADDRESS` — `you@gmail.com` | `RESEND_API_KEY` — `re_…` |
+| `GMAIL_APP_PASSWORD` — 16-char code | `SENDER_EMAIL` — `Name <brief@yourdomain.com>` |
+
+Optional (override defaults without editing code): `GEMINI_MODEL` and
+`SENDER_NAME` as **secrets**; `NEWS_WINDOW_HOURS` and `BRIEF_TIMEZONE` as repo
 **Variables** (Settings → Secrets and variables → Actions → *Variables* tab).
 
 ### Trigger a manual test run
@@ -219,7 +239,8 @@ Everything sits inside free tiers for a small daily newsletter:
 | GitHub Actions  | generous free minutes for public repos     | ~1–2 min/day                |
 | FRED            | free, unlimited for this volume            | ~8 requests/day             |
 | Gemini (Flash)  | free tier, no billing                      | 1 request/day               |
-| Resend          | 100 emails/day, 3,000/month                | (#recipients)/day           |
+| Gmail (SMTP)    | free, ~500 recipients/day                  | (#recipients)/day           |
+| Resend (alt.)   | 100 emails/day, 3,000/month                | (#recipients)/day           |
 
 No paid services are used or required.
 
@@ -236,8 +257,11 @@ No paid services are used or required.
 * **Gemini `429`** — free-tier rate limit. The client already backs off
   (1→2→4→8s, honoring `Retry-After`). One brief a day is far under the limit;
   this mostly bites during rapid manual testing — wait a minute and retry.
-* **Resend `403 / domain not verified`** — finish domain verification, or send
-  from `onboarding@resend.dev` to your own account email while testing.
+* **Gmail `Username and Password not accepted`** — you used your normal Google
+  password. You must use a 16-char **App Password** (and 2-Step Verification must
+  be on). Re-create it at https://myaccount.google.com/apppasswords.
+* **Resend `403 / domain not verified`** — finish domain verification, or just
+  use the Gmail option (it needs no domain).
 
 ---
 

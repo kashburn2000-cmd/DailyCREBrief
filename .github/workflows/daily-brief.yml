@@ -55,9 +55,15 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          RECIPIENTS: ${{ secrets.RECIPIENTS }}
+          # Delivery — set ONE of the two pairs below as secrets:
+          #   Gmail (no domain needed):  GMAIL_ADDRESS + GMAIL_APP_PASSWORD
+          #   Resend (needs a domain):   RESEND_API_KEY + SENDER_EMAIL
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-          RECIPIENTS: ${{ secrets.RECIPIENTS }}
+          SENDER_NAME: ${{ secrets.SENDER_NAME }}
           # Optional overrides — set as secrets or repo variables if you want to
           # change them without editing code. Defaults apply if unset.
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
