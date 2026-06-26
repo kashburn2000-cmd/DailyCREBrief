@@ -40,6 +40,11 @@ def _esc(text: str) -> str:
     return html.escape(text or "", quote=True)
 
 
+def _prose(text: str) -> str:
+    """Escape LLM prose and preserve line breaks (HTML collapses raw newlines)."""
+    return _esc(text).replace("\n", "<br>")
+
+
 def _change_color(row: TapeRow) -> str:
     return {"up": _UP, "down": _DOWN, "flat": _FLAT, "na": _MUTED}[row.direction]
 
@@ -157,14 +162,14 @@ def render_html(brief: Brief) -> str:
           {_tape_rows_html(brief.tape)}
         </table>
         <div style="font-size:13px;line-height:1.5;color:{_MUTED};margin-top:8px;font-style:italic;">
-          {_esc(s.tape_context) or "Rate levels and day-over-day moves shown above are sourced directly from FRED."}
+          {_prose(s.tape_context) or "Rate levels and day-over-day moves shown above are sourced directly from FRED."}
         </div>
       </td></tr>
 
-      {_section_html("Fed Watch", _esc(s.fed_watch) or "No fresh monetary-policy items in the last window.")}
-      {_section_html("CMBS Watch", _esc(s.cmbs_watch) or "No fresh CMBS or CRE-credit items in the last window.")}
+      {_section_html("Fed Watch", _prose(s.fed_watch) or "No fresh monetary-policy items in the last window.")}
+      {_section_html("CMBS Watch", _prose(s.cmbs_watch) or "No fresh CMBS or CRE-credit items in the last window.")}
       {_section_html("Headlines & Deal Flow", _headlines_html(brief))}
-      {_section_html("One to Watch", _esc(s.one_to_watch) or "—")}
+      {_section_html("One to Watch", _prose(s.one_to_watch) or "—")}
 
       <!-- Footer -->
       <tr><td style="padding:22px 24px 24px 24px;">

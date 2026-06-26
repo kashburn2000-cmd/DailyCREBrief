@@ -24,6 +24,7 @@ from .models import FeedItem, Headline, Synthesis, TapeRow
 log = logging.getLogger("cre_brief.synthesize")
 
 MAX_HEADLINES = 6
+MIN_HEADLINES = 3  # spec target is 3-6 bullets; backfill toward 3 when material exists
 
 # Gemini structured-output schema (OpenAPI subset — no additionalProperties).
 SYNTHESIS_SCHEMA: Dict[str, Any] = {
@@ -137,6 +138,42 @@ def _coerce_headlines(raw_headlines: Any, items_by_index: Dict[int, FeedItem]) -
     return headlines
 
 
+def _short(text: str, limit: int = 140) -> str:
+    text = (text or "").strip()
+    if len(text) > limit:
+        text = text[: limit - 1].rstrip() + "…"
+    return text
+
+
+def _backfill_headlines(headlines: List[Headline], items: List[FeedItem]) -> List[Headline]:
+    """Pad to MIN_HEADLINES from the freshest unused items when the model under-selects.
+
+    The empty-section fallback in the renderer still applies on genuinely empty
+    news days (no items at all); this only fires when material exists but Gemini
+    returned fewer than three usable, distinct headlines.
+    """
+    if len(headlines) >= MIN_HEADLINES:
+        return headlines
+    used_links = {h.link for h in headlines if h.link}
+    used_titles = {h.title for h in headlines}
+    for item in items:  # items are already sorted newest-first
+        if len(headlines) >= MIN_HEADLINES:
+            break
+        if (item.link and item.link in used_links) or item.title in used_titles:
+            continue
+        headlines.append(
+            Headline(
+                takeaway=_short(item.summary) or item.title,
+                title=item.title,
+                source=item.source,
+                link=item.link,
+            )
+        )
+        used_links.add(item.link)
+        used_titles.add(item.title)
+    return headlines
+
+
 def synthesize(
     client: GeminiClient,
     tape: List[TapeRow],
@@ -158,11 +195,13 @@ def synthesize(
         log.error("Gemini returned non-object JSON; using empty prose")
         return Synthesis()
 
+    headlines = _coerce_headlines(data.get("headlines"), items_by_index)
+    headlines = _backfill_headlines(headlines, items)
     synthesis = Synthesis(
         tape_context=str(data.get("tape_context", "")).strip(),
         fed_watch=str(data.get("fed_watch", "")).strip(),
         cmbs_watch=str(data.get("cmbs_watch", "")).strip(),
-        headlines=_coerce_headlines(data.get("headlines"), items_by_index),
+        headlines=headlines,
         one_to_watch=str(data.get("one_to_watch", "")).strip(),
     )
     log.info(

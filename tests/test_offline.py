@@ -139,12 +139,84 @@ def test_synthesize_maps_indices_and_drops_hallucinations():
         "one_to_watch": "Watch next week's office maturity wall.",
     }
     synth = synthesize(FakeGemini(payload), [], items, "facts", "items")
-    assert len(synth.headlines) == 2, "hallucinated and duplicate indices must be dropped"
-    # Links are attached from the real items, never from the model.
+    takeaways = [h.takeaway for h in synth.headlines]
+    # Hallucinated (index 99) and duplicate (second index 1) entries are dropped.
+    assert "FABRICATED — index does not exist." not in takeaways
+    assert "duplicate of 1" not in takeaways
+    # The model's two valid picks are preserved, in order, with REAL links.
     assert synth.headlines[0].link == "https://trepp.com/b"
     assert synth.headlines[0].source == "Trepp TreppTalk"
     assert synth.headlines[1].link == "https://commercialobserver.com/c"
-    print("  ✓ synthesize maps indices to real links & drops bad/duplicate indices")
+    # Backfilled to the 3-item minimum from the remaining fresh item (index 0).
+    assert len(synth.headlines) == 3
+    assert synth.headlines[2].link == "https://wolfstreet.com/a"
+    # Every link is a real item link — never fabricated.
+    real_links = {it.link for it in items}
+    assert all(h.link in real_links for h in synth.headlines)
+    print("  ✓ synthesize maps indices to real links, drops bad/dupes, backfills to 3")
+
+
+def test_headlines_backfill_only_when_material_exists():
+    # Model selects nothing valid; backfill pulls the 3 freshest real items.
+    items = _sample_items()
+    payload = {"tape_context": "", "fed_watch": "", "cmbs_watch": "",
+               "headlines": [{"item_index": 50, "takeaway": "nope"}], "one_to_watch": ""}
+    synth = synthesize(FakeGemini(payload), [], items, "facts", "items")
+    assert len(synth.headlines) == 3
+    assert {h.link for h in synth.headlines} == {it.link for it in items}
+
+    # With zero items there is nothing to backfill -> empty (renderer shows fallback).
+    synth_empty = synthesize(FakeGemini(payload), [], [], "facts", "items")
+    assert synth_empty.headlines == []
+    print("  ✓ backfill fills to 3 when items exist, stays empty on a no-news day")
+
+
+def test_gemini_non_json_200_degrades():
+    # A 200 with a non-JSON body must raise GeminiError (not a bare ValueError),
+    # so synthesize() can degrade gracefully instead of crashing the run.
+    class BadJson(FakeResponse):
+        def json(self):
+            raise ValueError("no json")
+
+    session = FakeSession([BadJson(200, text="<html>error</html>")])
+    client = GeminiClient("k", "gemini-flash-latest", session=session, sleeper=lambda s: None)
+    try:
+        client.generate("hi")
+    except GeminiError:
+        print("  ✓ gemini 200-with-non-JSON-body raises GeminiError (graceful)")
+        return
+    raise AssertionError("expected GeminiError on non-JSON 200 body")
+
+
+def test_fed_funds_single_bound():
+    from cre_brief.fred import SeriesPoint as SP, build_tape as bt
+    # Only the lower bound returns -> show it, don't fall through to n/a.
+    pts = {"DFEDTARL": SP("DFEDTARL", latest=4.25, latest_date="2026-06-25")}
+    tape, used = bt(FakeFred(pts))
+    fed = {r.label: r for r in tape}["Fed Funds Target"]
+    assert fed.level_display == "4.25% (lower)"
+    assert "DFEDTARL" in used and "DFEDTARU" not in used
+    print("  ✓ fed funds target uses available bound when the other is missing")
+
+
+def test_render_preserves_newlines():
+    from cre_brief.render import _prose
+    assert _prose("a.\nb.") == "a.&lt;br&gt;b.".replace("&lt;", "<").replace("&gt;", ">")
+    # And it still escapes HTML special chars.
+    assert _prose("x & <y>") == "x &amp; &lt;y&gt;"
+    print("  ✓ html prose preserves newlines as <br> and escapes specials")
+
+
+def test_window_hours_clamped():
+    import os
+    from cre_brief.config import Config
+    for raw, expected in [("0", 36), ("-5", 36), ("999", 168), ("48", 48), ("oops", 36)]:
+        os.environ["NEWS_WINDOW_HOURS"] = raw
+        try:
+            assert Config.load().news_window_hours == expected, f"{raw} -> {expected}"
+        finally:
+            del os.environ["NEWS_WINDOW_HOURS"]
+    print("  ✓ NEWS_WINDOW_HOURS clamped to a sane positive range")
 
 
 def test_synthesize_degrades_on_gemini_error():
@@ -220,8 +292,13 @@ def main():
         test_tape_formatting_and_bps,
         test_missing_series_is_graceful,
         test_synthesize_maps_indices_and_drops_hallucinations,
+        test_headlines_backfill_only_when_material_exists,
         test_synthesize_degrades_on_gemini_error,
+        test_gemini_non_json_200_degrades,
+        test_fed_funds_single_bound,
         test_render_html_and_text,
+        test_render_preserves_newlines,
+        test_window_hours_clamped,
         test_gemini_backoff_then_success,
         test_gemini_fails_fast_on_400,
     ]

@@ -75,13 +75,14 @@ DailyCREBrief/
 2. Click **Create API key**. Copy it.
 3. **Do NOT enable billing** — the free tier is all this needs.
 
-> **Model note (important):** the default model is **`gemini-3.5-flash`**.
-> `gemini-2.5-flash` was **deprecated on 2026-06-17** and will eventually stop
-> serving, so it is not used. Model names change often — the value lives in the
-> `GEMINI_MODEL` env var / constant so you can swap it with no code change.
-> Check the current free-tier model names and limits in Google AI Studio.
-> Alternatives: `gemini-flash-latest` (auto-tracks newest stable Flash),
-> `gemini-3.1-flash-lite`.
+> **Model note (important):** the default is the rolling alias
+> **`gemini-flash-latest`**, which Google maps to the current stable free-tier
+> Flash model — so the newsletter keeps working across model deprecations with
+> no code change. (Model names churn: a recent example is `gemini-2.5-flash`
+> being retired in favor of `gemini-3.5-flash`. The alias insulates you from
+> that.) The value lives in the `GEMINI_MODEL` env var, so you can pin a specific
+> version any time — e.g. `gemini-3.5-flash` or `gemini-3.1-flash-lite`. Confirm
+> live model names + free-tier limits in Google AI Studio.
 
 > **Data-usage note:** on the Gemini **free** tier, Google may use your prompts
 > and the model's responses to improve its products, and human reviewers may see

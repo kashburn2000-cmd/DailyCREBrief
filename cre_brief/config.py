@@ -29,14 +29,17 @@ log = logging.getLogger("cre_brief.config")
 # Default free-tier Gemini Flash model. Kept as a constant *and* overridable via
 # the GEMINI_MODEL env var so it is trivial to swap when Google renames models.
 #
-# NOTE (verified against ai.google.dev, 2026-06): `gemini-2.5-flash` was
-# DEPRECATED on 2026-06-17 and will eventually stop serving (calls 404), so it is
-# NOT a safe default. The current GA free-tier Flash model is `gemini-3.5-flash`.
-# Alternatives you can drop into GEMINI_MODEL without code changes:
-#   * gemini-flash-latest   — alias that auto-tracks the newest stable Flash
-#   * gemini-3.1-flash-lite  — cheaper/lighter, also free-tier
-# Always confirm the live model name + free-tier limits in Google AI Studio.
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+# The default is the ROLLING ALIAS `gemini-flash-latest`, which Google maps to the
+# current stable free-tier Flash model. For an unattended daily job this is the
+# most resilient choice: it keeps working across model deprecations with no code
+# change. (Per Google's deprecation notices checked 2026-06, the pinned
+# `gemini-2.5-flash` was retired and `gemini-3.5-flash` became the current GA
+# Flash — exactly the churn the alias insulates you from.)
+#
+# Prefer a pinned version for reproducibility? Set GEMINI_MODEL to e.g.
+# `gemini-3.5-flash` (current GA) or `gemini-3.1-flash-lite` (lighter). Always
+# confirm the live model names + free-tier limits in Google AI Studio.
+DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 DEFAULT_TIMEZONE = "America/New_York"
 
 
@@ -69,6 +72,12 @@ class Config:
         except ValueError:
             log.warning("NEWS_WINDOW_HOURS not an int; defaulting to 36")
             window = 36
+        if window <= 0:
+            log.warning("NEWS_WINDOW_HOURS must be positive (got %d); defaulting to 36", window)
+            window = 36
+        elif window > 168:  # a week — guard against an accidental huge look-back
+            log.warning("NEWS_WINDOW_HOURS capped at 168 (got %d)", window)
+            window = 168
         return cls(
             gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
             fred_api_key=os.getenv("FRED_API_KEY", "").strip(),

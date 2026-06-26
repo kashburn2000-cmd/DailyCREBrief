@@ -208,24 +208,31 @@ def build_tape(client: FredClient) -> Tuple[List[TapeRow], List[str]]:
         level_display = f"{lower.latest:.2f}–{upper.latest:.2f}%"  # en dash
     elif upper.ok:
         level_display = f"{upper.latest:.2f}% (upper)"
+    elif lower.ok:
+        level_display = f"{lower.latest:.2f}% (lower)"
     else:
         level_display = "n/a"
-    # Day-over-day move tracked off the upper bound (moves only on policy changes).
-    change_bps, change_display = _fmt_change(upper.change_pp)
+    # Day-over-day move tracked off whichever bound we have (moves only on policy
+    # changes, and both bounds step together).
+    bound = upper if upper.ok else lower
+    change_bps, change_display = _fmt_change(bound.change_pp)
     rows.append(
         TapeRow(
             key="FEDFUNDS_TARGET",
             label="Fed Funds Target",
-            level=upper.latest,
+            level=bound.latest,
             level_display=level_display,
             change_bps=change_bps,
             change_display=change_display,
-            as_of=upper.latest_date,
-            prior_as_of=upper.prior_date,
+            as_of=bound.latest_date,
+            prior_as_of=bound.prior_date,
         )
     )
+    # Record only the bounds that actually returned data.
     if upper.ok:
-        used.extend([FED_TARGET_UPPER, FED_TARGET_LOWER])
+        used.append(FED_TARGET_UPPER)
+    if lower.ok:
+        used.append(FED_TARGET_LOWER)
 
     return rows, used
 

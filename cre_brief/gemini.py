@@ -1,9 +1,9 @@
 """Thin Gemini REST client (free tier, no SDK, no billing).
 
 Uses the public Generative Language REST API directly so the only dependency is
-``requests``. Implements exponential backoff (1s, 2s, 4s, 8s) on HTTP 429 (rate
-limit) and 503 (model overloaded), which are the two transient errors the free
-tier actually returns.
+``requests``. Implements exponential backoff (1s, 2s, 4s, 8s) on the transient errors the free
+tier returns — HTTP 429 (rate limit), 503 (model overloaded) and 500 (internal)
+— and honors a server ``Retry-After`` header when present.
 
 Endpoint shape (verified against ai.google.dev/gemini-api/docs):
 
@@ -121,7 +121,18 @@ class GeminiClient:
                 log.warning("Gemini request failed (attempt %d/%d): %s", attempt + 1, attempts, exc)
             else:
                 if resp.status_code == 200:
-                    return self._extract_text(resp.json())
+                    # A 200 with a non-JSON body (e.g. a proxy/error HTML page or
+                    # a truncated response) raises ValueError, NOT a
+                    # RequestException — convert it to GeminiError so callers
+                    # degrade gracefully instead of crashing the whole run.
+                    try:
+                        payload = resp.json()
+                    except ValueError as exc:
+                        raise GeminiError(
+                            f"Gemini returned 200 with a non-JSON body: {exc}; "
+                            f"body={resp.text[:300]}"
+                        )
+                    return self._extract_text(payload)
                 last_error = f"HTTP {resp.status_code}: {resp.text[:300]}"
                 if resp.status_code not in RETRY_STATUS:
                     # Non-transient (e.g. 400 bad request, 403 bad key) — fail fast.

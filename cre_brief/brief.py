@@ -100,6 +100,13 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
         log.info("Dry run complete (no email sent)")
         return 0
 
+    # Refuse to mail a content-free brief (e.g. a full FRED + Gemini outage left
+    # every Tape row 'n/a' and no news). Fail visibly so the scheduled run
+    # surfaces the problem instead of silently sending a useless email.
+    if not brief.fred_series_used and brief.item_count == 0:
+        log.error("No FRED data and no news items — refusing to send an empty brief.")
+        return 1
+
     result = send_brief(
         api_key=config.resend_api_key,
         sender=config.sender_email,
