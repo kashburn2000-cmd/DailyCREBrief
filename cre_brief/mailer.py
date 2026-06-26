@@ -52,11 +52,17 @@ class SendResult:
 #  Gmail (SMTP) — no domain required
 # ===========================================================================
 def _build_mime(sender_name: str, sender_addr: str, recipient: str,
-                subject: str, html: str, text: str) -> MIMEMultipart:
+                subject: str, html: str, text: str,
+                reply_to: str = "", unsubscribe: Optional[str] = None) -> MIMEMultipart:
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = formataddr((sender_name, sender_addr))
     msg["To"] = recipient
+    if reply_to:
+        msg["Reply-To"] = reply_to
+    if unsubscribe:
+        # Helps inbox placement and lets clients show a one-click unsubscribe.
+        msg["List-Unsubscribe"] = unsubscribe
     # Plain part first, HTML second — clients render the last part they support.
     msg.attach(MIMEText(text, "plain", "utf-8"))
     msg.attach(MIMEText(html, "html", "utf-8"))
@@ -71,6 +77,8 @@ def send_via_gmail(
     subject: str,
     html: str,
     text: str,
+    reply_to: str = "",
+    unsubscribe: Optional[str] = None,
     smtp_factory=None,
 ) -> SendResult:
     """Send the brief from a Gmail account over SMTP (TLS).
@@ -98,7 +106,8 @@ def send_via_gmail(
 
     try:
         for recipient in recipients:
-            msg = _build_mime(sender_name, gmail_address, recipient, subject, html, text)
+            msg = _build_mime(sender_name, gmail_address, recipient, subject, html, text,
+                              reply_to=reply_to, unsubscribe=unsubscribe)
             try:
                 server.sendmail(gmail_address, [recipient], msg.as_string())
                 log.info("Sent to %s via Gmail", recipient)
@@ -128,6 +137,8 @@ def _resend_one(
     html: str,
     text: str,
     sleeper,
+    reply_to: str = "",
+    unsubscribe: Optional[str] = None,
 ) -> bool:
     payload = {
         "from": sender,
@@ -136,6 +147,10 @@ def _resend_one(
         "html": html,
         "text": text,  # plaintext fallback -> multipart/alternative
     }
+    if reply_to:
+        payload["reply_to"] = reply_to
+    if unsubscribe:
+        payload["headers"] = {"List-Unsubscribe": unsubscribe}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     attempts = len(_BACKOFF) + 1
@@ -175,6 +190,8 @@ def send_via_resend(
     subject: str,
     html: str,
     text: str,
+    reply_to: str = "",
+    unsubscribe: Optional[str] = None,
     session: Optional[requests.Session] = None,
     sleeper=time.sleep,
 ) -> SendResult:
@@ -182,7 +199,8 @@ def send_via_resend(
     session = session or requests.Session()
     result = SendResult()
     for recipient in recipients:
-        if _resend_one(session, api_key, sender, recipient, subject, html, text, sleeper):
+        if _resend_one(session, api_key, sender, recipient, subject, html, text, sleeper,
+                       reply_to=reply_to, unsubscribe=unsubscribe):
             result.sent.append(recipient)
         else:
             result.failed.append(recipient)

@@ -67,6 +67,9 @@ jobs:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_NAME: ${{ secrets.SENDER_NAME }}
           DELIVERY_METHOD: ${{ vars.DELIVERY_METHOD }}
+          # Deliverability (optional but recommended — helps avoid spam folders).
+          REPLY_TO: ${{ secrets.REPLY_TO }}
+          LIST_UNSUBSCRIBE: ${{ secrets.LIST_UNSUBSCRIBE }}
           # Optional overrides — set as secrets or repo variables if you want to
           # change them without editing code. Defaults apply if unset.
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}

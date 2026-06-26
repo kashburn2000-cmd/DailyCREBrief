@@ -222,13 +222,29 @@ def test_gmail_send_per_recipient():
     res = send_via_gmail(
         "me@gmail.com", "abcd efgh ijkl mnop", "CRE Brief",
         ["a@x.com", "b@y.com"], "Subj", "<b>hi</b>", "hi",
+        reply_to="real@inbox.com", unsubscribe="<mailto:real@inbox.com?subject=unsubscribe>",
         smtp_factory=lambda: FakeSMTP(),
     )
     assert res.sent == ["a@x.com", "b@y.com"] and not res.failed
     _, raw = sent[0]
     assert "text/plain" in raw and "text/html" in raw   # multipart/alternative
     assert "CRE Brief" in raw and "me@gmail.com" in raw  # display name + from
-    print("  ✓ gmail sends one multipart message per recipient")
+    assert "Reply-To: real@inbox.com" in raw
+    assert "List-Unsubscribe:" in raw and "real@inbox.com" in raw
+    print("  ✓ gmail sends multipart msg per recipient with Reply-To + List-Unsubscribe")
+
+
+def test_unsubscribe_header_helper():
+    from cre_brief.config import Config
+    # Falls back to reply_to when LIST_UNSUBSCRIBE is unset.
+    c = Config(reply_to="me@inbox.com")
+    assert c.unsubscribe_header() == "<mailto:me@inbox.com?subject=unsubscribe>"
+    # Explicit https URL is wrapped in angle brackets.
+    c2 = Config(list_unsubscribe="https://example.com/unsub")
+    assert c2.unsubscribe_header() == "<https://example.com/unsub>"
+    # Nothing configured -> no header.
+    assert Config().unsubscribe_header() is None
+    print("  ✓ unsubscribe header builds from reply_to / URL / falls back to None")
 
 
 def test_gmail_login_failure_marks_all_failed():
@@ -384,6 +400,7 @@ def main():
         test_render_html_and_text,
         test_render_preserves_newlines,
         test_gmail_send_per_recipient,
+        test_unsubscribe_header_helper,
         test_gmail_login_failure_marks_all_failed,
         test_delivery_method_selection_and_validate,
         test_delivery_override_forces_method,

@@ -232,6 +232,34 @@ aren't missed.
 
 ---
 
+## Staying out of the spam folder
+
+A brand-new sending domain has **no reputation**, so the first emails often land
+in junk regardless of content. It improves as you send consistently and
+recipients engage. To accelerate it:
+
+1. **Add a DMARC record** (the biggest single lever). Resend's domain
+   verification sets up SPF and DKIM; DMARC is the third piece and a strong trust
+   signal. In your DNS, add a TXT record:
+   * **Name/Host:** `_dmarc`  (i.e. `_dmarc.yourdomain.com`)
+   * **Value:** `v=DMARC1; p=none; rua=mailto:you@yourdomain.com`
+   * Start with `p=none` (monitor only). Wait a few minutes, then check it at
+     a tool like https://dmarc.postmarkapp.com or mxtoolbox.com.
+2. **Set `REPLY_TO`** to a real inbox you read (e.g. your Gmail). The code then
+   adds `Reply-To` and a `List-Unsubscribe` header — both make filters trust the
+   mail more. (Set `LIST_UNSUBSCRIBE` to a different address/URL to override.)
+3. **Have recipients mark it "Not junk"** once and, in Gmail, add the sender to
+   their Contacts. A reply from them is the strongest possible signal.
+4. **Send consistently** (the weekday schedule does this) and keep the list to
+   people who expect it. Avoid sudden spikes in volume.
+5. **Keep the from-address stable** — don't change `SENDER_EMAIL` often.
+
+SPF + DKIM (from Resend) + DMARC + a stable from-address + List-Unsubscribe is
+the standard recipe; after a week or two of steady sending, inbox placement
+usually settles.
+
+---
+
 ## Cost
 
 Everything sits inside free tiers for a small daily newsletter:

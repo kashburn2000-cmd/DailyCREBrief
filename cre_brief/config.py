@@ -66,6 +66,10 @@ class Config:
     resend_api_key: str = ""
     sender_email: str = ""
     sender_name: str = DEFAULT_SENDER_NAME
+    # Deliverability extras (optional). reply_to = a real inbox you monitor;
+    # list_unsubscribe = an email or https URL for the List-Unsubscribe header.
+    reply_to: str = ""
+    list_unsubscribe: str = ""
     # Optional override: "gmail" or "resend". Blank = auto-detect. Use this to
     # force a method even when the other's secrets are still present.
     delivery_override: str = ""
@@ -100,6 +104,21 @@ class Config:
             return "resend"
         return None
 
+    def unsubscribe_header(self) -> Optional[str]:
+        """Build a List-Unsubscribe header value, or None if nothing usable is set.
+
+        Falls back to reply_to when LIST_UNSUBSCRIBE is unset, so a single
+        REPLY_TO gives both a reply target and a working unsubscribe contact.
+        """
+        target = self.list_unsubscribe or self.reply_to
+        if not target:
+            return None
+        if target.startswith(("http://", "https://")):
+            return f"<{target}>"
+        if "@" in target:
+            return f"<mailto:{target}?subject=unsubscribe>"
+        return None
+
     # ------------------------------------------------------------------
     @classmethod
     def load(cls) -> "Config":
@@ -122,6 +141,8 @@ class Config:
             resend_api_key=os.getenv("RESEND_API_KEY", "").strip(),
             sender_email=os.getenv("SENDER_EMAIL", "").strip(),
             sender_name=os.getenv("SENDER_NAME", DEFAULT_SENDER_NAME).strip() or DEFAULT_SENDER_NAME,
+            reply_to=os.getenv("REPLY_TO", "").strip(),
+            list_unsubscribe=os.getenv("LIST_UNSUBSCRIBE", "").strip(),
             delivery_override=os.getenv("DELIVERY_METHOD", "").strip(),
             recipients=_split_csv(os.getenv("RECIPIENTS")),
             gemini_model=os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL,

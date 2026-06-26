@@ -109,6 +109,7 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
         return 1
 
     method = config.delivery_method
+    unsubscribe = config.unsubscribe_header()
     log.info("Sending via %s to %d recipient(s)", method, len(config.recipients))
     if method == "gmail":
         result = send_via_gmail(
@@ -119,6 +120,8 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
             subject=brief.subject,
             html=html,
             text=text,
+            reply_to=config.reply_to,
+            unsubscribe=unsubscribe,
         )
     else:
         result = send_via_resend(
@@ -128,6 +131,8 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
             subject=brief.subject,
             html=html,
             text=text,
+            reply_to=config.reply_to,
+            unsubscribe=unsubscribe,
         )
     if not result.sent:
         log.error("No emails were delivered")
