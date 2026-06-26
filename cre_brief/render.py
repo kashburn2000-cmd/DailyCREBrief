@@ -88,7 +88,7 @@ def _section_html(title: str, body_html: str) -> str:
 
 def _headlines_html(brief: Brief) -> str:
     if not brief.synthesis.headlines:
-        return '<div style="color:%s;">No standout deal-flow items in the last window.</div>' % _MUTED
+        return '<div style="color:%s;">No standout industry items in the last window.</div>' % _MUTED
     items = []
     for h in brief.synthesis.headlines:
         src = _esc(h.source)
@@ -168,7 +168,7 @@ def render_html(brief: Brief) -> str:
 
       {_section_html("Fed Watch", _prose(s.fed_watch) or "No fresh monetary-policy items in the last window.")}
       {_section_html("CMBS Watch", _prose(s.cmbs_watch) or "No fresh CMBS or CRE-credit items in the last window.")}
-      {_section_html("Headlines & Deal Flow", _headlines_html(brief))}
+      {_section_html("Industry Headlines", _headlines_html(brief))}
       {_section_html("One to Watch", _prose(s.one_to_watch) or "—")}
 
       <!-- Footer -->
@@ -226,7 +226,7 @@ def render_text(brief: Brief) -> str:
     block("Fed Watch", s.fed_watch, "No fresh monetary-policy items in the last window.")
     block("CMBS Watch", s.cmbs_watch, "No fresh CMBS or CRE-credit items in the last window.")
 
-    out.append("HEADLINES & DEAL FLOW")
+    out.append("INDUSTRY HEADLINES")
     out.append(_rule())
     if brief.synthesis.headlines:
         for h in brief.synthesis.headlines:
@@ -237,7 +237,7 @@ def render_text(brief: Brief) -> str:
                 out.append(f"  {h.link}")
             out.append("")
     else:
-        out.append("No standout deal-flow items in the last window.")
+        out.append("No standout industry items in the last window.")
         out.append("")
 
     out.append("ONE TO WATCH")

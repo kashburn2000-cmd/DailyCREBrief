@@ -320,6 +320,23 @@ def test_window_hours_clamped():
     print("  ✓ NEWS_WINDOW_HOURS clamped to a sane positive range")
 
 
+def test_prioritize_items_ranks_fed_and_industry_over_deals():
+    from cre_brief.synthesize import prioritize_items
+    items = [
+        FeedItem(index=0, title="Blackstone acquires a Dallas tower", source="A", link="l1", summary="$300M deal"),
+        FeedItem(index=1, title="Fed signals patience as inflation cools", source="B", link="l2", summary="FOMC on rates"),
+        FeedItem(index=2, title="CMBS delinquencies rise on distress", source="C", link="l3", summary="credit stress"),
+        FeedItem(index=3, title="REIT names new CFO", source="D", link="l4", summary="personnel move"),
+    ]
+    ordered = prioritize_items(items)
+    titles = [it.title for it in ordered]
+    assert "Fed signals" in titles[0]            # Fed/rates ranked first
+    assert "CMBS delinquencies" in titles[1]     # industry/credit next
+    assert "acquires" in titles[-2] or "CFO" in titles[-1]  # single deal / personnel sink
+    assert [it.index for it in ordered] == [0, 1, 2, 3]     # indices reassigned by new order
+    print("  ✓ prioritize_items ranks Fed/industry above single-property deals")
+
+
 def test_synthesize_degrades_on_gemini_error():
     class Boom:
         def generate_json(self, *a, **k):
@@ -394,6 +411,7 @@ def main():
         test_missing_series_is_graceful,
         test_synthesize_maps_indices_and_drops_hallucinations,
         test_headlines_backfill_only_when_material_exists,
+        test_prioritize_items_ranks_fed_and_industry_over_deals,
         test_synthesize_degrades_on_gemini_error,
         test_gemini_non_json_200_degrades,
         test_fed_funds_single_bound,

@@ -12,9 +12,12 @@ Each edition has a fixed structure a reader can skim in 60 seconds:
 
 * **The Tape** — a rate table (10Y, 2Y, 30Y, 3M, SOFR, 2s/10s spread, fed funds
   target) with levels and day-over-day moves in basis points.
-* **Fed Watch** — monetary-policy / rate-outlook synthesis from the day's feeds.
+* **Fed Watch** — the priority section: a fuller monetary-policy / rate-outlook
+  synthesis from the day's feeds.
 * **CMBS Watch** — CMBS / CRE-credit / delinquency / distress synthesis.
-* **Headlines & Deal Flow** — 3–6 bullets, each a one-line takeaway + source link.
+* **Industry Headlines** — 3–6 bullets on industry, rate and policy trends, each
+  with a one-line takeaway + source link. Individual property deals are
+  deliberately de-prioritized.
 * **One to Watch** — a single forward-looking line.
 * **Footer** — data sources, timestamp, and a "not investment advice" disclaimer.
 

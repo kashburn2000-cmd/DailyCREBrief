@@ -19,7 +19,7 @@ from .gemini import GeminiClient
 from .mailer import send_via_gmail, send_via_resend
 from .models import Brief
 from .render import render_html, render_text
-from .synthesize import synthesize
+from .synthesize import prioritize_items, synthesize
 
 log = logging.getLogger("cre_brief.brief")
 
@@ -38,10 +38,12 @@ def build_brief(config: Config, session: Optional[requests.Session] = None) -> B
     tape_facts = tape_facts_for_prompt(tape)
     log.info("The Tape built from %d FRED series", len(series_used))
 
-    # 2. News — fetch, validate, window, dedupe.
+    # 2. News — fetch, validate, window, dedupe, then rank by what the reader
+    #    cares about (Fed/rates/industry first; single-property deals last).
     items, sources_used = collect_items(
         window_hours=config.news_window_hours, session=session
     )
+    items = prioritize_items(items)
     items_block = items_for_prompt(items)
 
     # 3. Prose — Gemini synthesizes ONLY from the supplied facts + items.
