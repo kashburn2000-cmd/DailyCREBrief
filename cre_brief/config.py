@@ -122,11 +122,15 @@ class Config:
     # ------------------------------------------------------------------
     @classmethod
     def load(cls) -> "Config":
-        try:
-            window = int(os.getenv("NEWS_WINDOW_HOURS", "36"))
-        except ValueError:
-            log.warning("NEWS_WINDOW_HOURS not an int; defaulting to 36")
-            window = 36
+        window_raw = os.getenv("NEWS_WINDOW_HOURS", "").strip()
+        if not window_raw:
+            window = 36  # unset/blank (e.g. an undefined GitHub Variable) -> default, no warning
+        else:
+            try:
+                window = int(window_raw)
+            except ValueError:
+                log.warning("NEWS_WINDOW_HOURS=%r is not an integer; defaulting to 36", window_raw)
+                window = 36
         if window <= 0:
             log.warning("NEWS_WINDOW_HOURS must be positive (got %d); defaulting to 36", window)
             window = 36

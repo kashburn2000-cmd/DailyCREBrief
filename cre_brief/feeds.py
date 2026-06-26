@@ -55,25 +55,29 @@ class Feed:
 #
 #  Each run validates every feed and silently skips any that fail, so it is
 #  safe to leave a flaky or wrong URL here — it just won't contribute that day.
+#  Run `python -m cre_brief.feeds` (or read a workflow run's log) to see which
+#  feeds resolve.
 #
-#  Confidence on the starter URLs below (these could not be fetched from the
-#  locked-down build environment, only the first real run can confirm them — run
-#  `python -m cre_brief.feeds` to see which resolve):
-#    [high] WordPress sites use the canonical `/feed/` path:
-#           Wolf Street, Commercial Observer, Connect CRE, CRE Daily.
-#    [med]  Trepp TreppTalk is a HubSpot blog (convention: `/<blog>/rss.xml`).
-#    [low]  GlobeSt, Bisnow, MBA — feed URL unconfirmed; if one is dropped in the
-#           logs, find the real feed (see README "Editing the feeds") and fix it.
+#  Tip for finding a site's real feed URL: try `/feed/`, `/rss/`, or `/feed.xml`;
+#  or open the page source and search for `application/rss+xml`; or use a feed
+#  finder. See the README section "Editing the feeds".
 # ===========================================================================
 FEEDS: List[Feed] = [
+    # Confirmed live on the first production run (2026-06-26):
     Feed("Wolf Street", "https://wolfstreet.com/feed/"),
     Feed("Commercial Observer", "https://commercialobserver.com/feed/"),
-    Feed("GlobeSt", "https://www.globest.com/feed/"),
-    Feed("Bisnow", "https://www.bisnow.com/feed"),
     Feed("Connect CRE", "https://www.connectcre.com/feed/"),
-    Feed("CRE Daily", "https://www.credaily.com/feed/"),
     Feed("Trepp TreppTalk", "https://www.trepp.com/trepptalk/rss.xml"),
-    Feed("MBA Newsroom", "https://www.mba.org/feeds/news-and-research.rss"),
+    # Reliable, on-topic additions (verify in your first run's log):
+    Feed("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),  # ideal for Fed Watch
+    Feed("CRE Direct", "https://www.crenews.com/feed/"),                            # CMBS / CRE credit
+    #
+    # Parked — no usable public RSS feed was found at the guessed URL. If you
+    # locate a real feed (see README "Editing the feeds"), uncomment and fix it:
+    #   Feed("GlobeSt", "..."),       # globest.com/feed/ -> 404; feeds sit behind globest.com/rss/
+    #   Feed("CRE Daily", "..."),     # credaily.com/feed/ -> valid XML but no items (email newsletter)
+    #   Feed("Bisnow", "..."),        # no native RSS feed (only third-party generators)
+    #   Feed("MBA Newsroom", "..."),  # no native RSS feed found
 ]
 
 _TAG_RE = re.compile(r"<[^>]+>")

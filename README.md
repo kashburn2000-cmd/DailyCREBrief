@@ -213,12 +213,17 @@ Edit the `FEEDS` list at the top of **`cre_brief/feeds.py`**. Each entry is just
 **silently skips any that fail**, so a dead or wrong URL never breaks a send —
 it just won't contribute that day.
 
-> The starter URLs follow each site's known feed convention (WordPress `/feed/`,
-> HubSpot `/<blog>/rss.xml`, etc.) but could not be fetched from the build
-> environment, so confirm them on your first real run: `python -m cre_brief.feeds`
-> lists which resolve. If one is dropped, open the site, find its RSS link
-> (often in the footer, or try `/feed/`, `/rss/`, `/feed.xml`), and update the URL.
-> `GlobeSt`, `Bisnow`, and `MBA` are the lowest-confidence starters.
+Confirmed working as of the first production run: **Wolf Street, Commercial
+Observer, Connect CRE, Trepp TreppTalk**, plus added **Federal Reserve** (press
+releases) and **CRE Direct / crenews.com** (CMBS). Parked with no working feed:
+GlobeSt (feeds sit behind `globest.com/rss/`), CRE Daily (newsletter, empty
+feed), Bisnow and MBA (no native RSS) — see the commented lines in `feeds.py`.
+
+> **To find a site's real feed URL:** try `/feed/`, `/rss/`, or `/feed.xml`; or
+> open the page and View Source and search for `application/rss+xml` (the `href`
+> next to it is the feed); or paste the homepage into a feed finder like
+> rss.app / feedspot. Then add `Feed("Name", "<url>")` to the list. Check your
+> next run's log (or `python -m cre_brief.feeds`) to confirm it resolves.
 
 ### Send time
 Edit the `cron:` line in **`.github/workflows/daily-brief.yml`**. Remember it's

@@ -311,7 +311,7 @@ def test_delivery_override_forces_method():
 def test_window_hours_clamped():
     import os
     from cre_brief.config import Config
-    for raw, expected in [("0", 36), ("-5", 36), ("999", 168), ("48", 48), ("oops", 36)]:
+    for raw, expected in [("0", 36), ("-5", 36), ("999", 168), ("48", 48), ("oops", 36), ("", 36)]:
         os.environ["NEWS_WINDOW_HOURS"] = raw
         try:
             assert Config.load().news_window_hours == expected, f"{raw} -> {expected}"
