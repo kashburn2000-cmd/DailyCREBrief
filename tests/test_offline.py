@@ -231,6 +231,9 @@ def test_gmail_send_per_recipient():
     assert "CRE Brief" in raw and "me@gmail.com" in raw  # display name + from
     assert "Reply-To: real@inbox.com" in raw
     assert "List-Unsubscribe:" in raw and "real@inbox.com" in raw
+    # Well-formed mail carries Date + a domain-aligned Message-ID at the source.
+    assert "Date:" in raw
+    assert "Message-ID:" in raw and "@gmail.com>" in raw
     print("  ✓ gmail sends multipart msg per recipient with Reply-To + List-Unsubscribe")
 
 
