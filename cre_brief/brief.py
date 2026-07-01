@@ -94,6 +94,10 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
             print(f"Recipients: {', '.join(config.recipients)}")
         else:
             print("Recipients: (none configured — set RECIPIENTS to send)")
+        bad = config.invalid_recipients()
+        if bad:
+            print(f"WARNING: {len(bad)} recipient(s) look malformed and would be "
+                  f"rejected on send: {', '.join(bad)}")
         print("=" * 70 + "\n")
         print(text)
         if print_html:

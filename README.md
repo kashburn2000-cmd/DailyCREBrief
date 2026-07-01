@@ -207,9 +207,22 @@ After that the cron schedule takes over automatically.
 ## 4. Customizing
 
 ### Recipients
-Stored in the `RECIPIENTS` secret (comma-separated). Edit the secret; no code or
-redeploy needed. Each recipient gets their own copy (addresses are not shared
-between recipients).
+Stored in the `RECIPIENTS` secret. Edit the secret; no code or redeploy needed.
+Each recipient gets their own copy (addresses are not shared between recipients).
+
+**Format matters** — the mail APIs reject a badly-formed address. Each entry must
+be either a bare `email@example.com` **or** a `Name <email@example.com>` (with the
+angle brackets — `Name email@example.com` is rejected). Separate multiple
+recipients with **commas**:
+
+```
+alice@example.com, Bob Jones <bob@example.com>, carol@example.com
+```
+
+Semicolons and line breaks are tolerated as separators too (a common paste
+slip), but a plain space is not — it's valid *inside* a `Name <addr>` entry. A
+malformed entry now fails fast at startup with a message naming the bad address,
+and `--no-send` flags it without contacting the mail API.
 
 ### Unsubscribes
 Every email carries a visible **Unsubscribe** link in the footer *and* a

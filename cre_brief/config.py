@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -44,9 +45,33 @@ DEFAULT_TIMEZONE = "America/New_York"
 
 
 def _split_csv(raw: Optional[str]) -> List[str]:
+    """Split a recipient string on commas, semicolons, or newlines.
+
+    Commas are the documented separator, but semicolons and newlines are such a
+    common paste mistake — and silently collapse a list into one invalid address
+    that the mail API then rejects — that we accept them too. Spaces are NOT
+    separators: they're valid inside a ``Name <email@example.com>`` entry.
+    """
     if not raw:
         return []
-    return [part.strip() for part in raw.split(",") if part.strip()]
+    return [part.strip() for part in re.split(r"[,;\r\n]+", raw) if part.strip()]
+
+
+# A pragmatic address check — not full RFC 5322, just enough to catch the
+# formatting mistakes Gmail/Resend reject: spaces in the address, a missing "@",
+# or no dot in the domain. Accepts a bare address or the "Name <addr>" form.
+_ADDR_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _recipient_address(entry: str) -> str:
+    """Extract the bare address: 'Name <a@b.com>' -> 'a@b.com'; 'a@b.com' -> 'a@b.com'."""
+    match = re.search(r"<([^>]+)>", entry)
+    return (match.group(1) if match else entry).strip()
+
+
+def _invalid_recipients(recipients: List[str]) -> List[str]:
+    """Return entries that are neither a valid bare address nor a 'Name <addr>' form."""
+    return [r for r in recipients if not _ADDR_RE.match(_recipient_address(r))]
 
 
 class ConfigError(RuntimeError):
@@ -205,6 +230,23 @@ class Config:
                 + "; ".join(missing)
                 + ". Set them as env vars / GitHub Actions secrets (see .env.example)."
             )
+        # Fail fast on a malformed address so a run doesn't build the whole brief
+        # and only then get rejected by the mail API at the send step.
+        if require_send:
+            bad = self.invalid_recipients()
+            if bad:
+                noun, verb = ("entry", "isn't") if len(bad) == 1 else ("entries", "aren't")
+                raise ConfigError(
+                    f"RECIPIENTS has {len(bad)} {noun} that {verb} a valid "
+                    "'email@example.com' or 'Name <email@example.com>': "
+                    + "; ".join(bad)
+                    + ". Separate multiple recipients with commas (semicolons and "
+                    "newlines are tolerated too, but spaces are not)."
+                )
+
+    def invalid_recipients(self) -> List[str]:
+        """Recipient entries that fail the basic address-format check (for diagnostics)."""
+        return _invalid_recipients(self.recipients)
 
     # ------------------------------------------------------------------
     def now_local(self) -> datetime:

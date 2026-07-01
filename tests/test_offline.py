@@ -355,6 +355,38 @@ def test_delivery_override_forces_method():
     raise AssertionError("expected ConfigError when forced method lacks its secrets")
 
 
+def test_recipient_parsing_and_format_validation():
+    from cre_brief.config import Config, ConfigError, _split_csv
+    # Commas are the norm, but semicolons and newlines are tolerated so a paste
+    # mistake doesn't collapse the list into one address the mail API rejects.
+    assert _split_csv("a@x.com, b@y.com") == ["a@x.com", "b@y.com"]
+    assert _split_csv("a@x.com; b@y.com") == ["a@x.com", "b@y.com"]
+    assert _split_csv("a@x.com\nb@y.com") == ["a@x.com", "b@y.com"]
+    # Spaces are NOT separators — a 'Name <addr>' entry stays intact.
+    assert _split_csv("Jane Doe <jane@x.com>, bob@y.com") == ["Jane Doe <jane@x.com>", "bob@y.com"]
+
+    base = dict(gemini_api_key="g", fred_api_key="f",
+                gmail_address="me@gmail.com", gmail_app_password="p")
+    # Bare + display-name addresses both pass validation.
+    Config(**base, recipients=["Jane Doe <jane@x.com>", "bob@y.com"]).validate(require_send=True)
+
+    # A name without angle brackets is what Resend rejected in the wild ("Invalid
+    # `to` field") — we now catch it up front with a clear, actionable error.
+    for broken in ["Jane Doe jane@x.com", "not-an-email", "a@x.com b@y.com"]:
+        cfg = Config(**base, recipients=[broken])
+        assert cfg.invalid_recipients() == [broken]
+        try:
+            cfg.validate(require_send=True)
+        except ConfigError as exc:
+            assert "RECIPIENTS" in str(exc)
+        else:
+            raise AssertionError(f"expected ConfigError for malformed recipient {broken!r}")
+
+    # Dry-run validation never blocks on recipient format (it doesn't send).
+    Config(**base, recipients=["not-an-email"]).validate(require_send=False)
+    print("  ✓ recipients: separators tolerated; malformed addresses rejected before send")
+
+
 def test_window_hours_clamped():
     import os
     from cre_brief.config import Config
@@ -471,6 +503,7 @@ def main():
         test_gmail_login_failure_marks_all_failed,
         test_delivery_method_selection_and_validate,
         test_delivery_override_forces_method,
+        test_recipient_parsing_and_format_validation,
         test_window_hours_clamped,
         test_gemini_backoff_then_success,
         test_gemini_fails_fast_on_400,
