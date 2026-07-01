@@ -19,7 +19,8 @@ Each edition has a fixed structure a reader can skim in 60 seconds:
   with a one-line takeaway + source link. Individual property deals are
   deliberately de-prioritized.
 * **One to Watch** — a single forward-looking line.
-* **Footer** — data sources, timestamp, and a "not investment advice" disclaimer.
+* **Footer** — data sources, timestamp, a "not investment advice" disclaimer, and
+  a one-click **Unsubscribe** link.
 
 <sub>Rendered HTML preview: run a dry run (below) and open `out/brief.rendered.html`.</sub>
 
@@ -210,6 +211,17 @@ Stored in the `RECIPIENTS` secret (comma-separated). Edit the secret; no code or
 redeploy needed. Each recipient gets their own copy (addresses are not shared
 between recipients).
 
+### Unsubscribes
+Every email carries a visible **Unsubscribe** link in the footer *and* a
+`List-Unsubscribe` header, both pointing at the address in `LIST_UNSUBSCRIBE`
+(falls back to `REPLY_TO`, then your `GMAIL_ADDRESS`). With the default
+`mailto:` target, clicking Unsubscribe opens a pre-filled email **from the
+recipient's own address** to your inbox — so you always know exactly who asked
+to leave. To honor it, delete that address from the `RECIPIENTS` secret (Settings
+→ Secrets and variables → Actions). No server or database is involved, which
+keeps the project at $0. Prefer a hosted form instead of email? Set
+`LIST_UNSUBSCRIBE` to an https URL and the link points there.
+
 ### Feeds
 Edit the `FEEDS` list at the top of **`cre_brief/feeds.py`**. Each entry is just
 `Feed("Display Name", "https://…/feed-url")`. Every run validates each feed and
@@ -242,9 +254,22 @@ aren't missed.
 
 ## Staying out of the spam folder
 
-A brand-new sending domain has **no reputation**, so the first emails often land
-in junk regardless of content. It improves as you send consistently and
-recipients engage. To accelerate it:
+> **Sending via Gmail (the default path)?** Google already applies **SPF, DKIM,
+> and a DMARC policy** to everything you send from your account, so the
+> authentication in step 1 below is **handled for you** — you can skip the DNS
+> work and focus on steps 2–5 and the **Focused-inbox tip** further down. The
+> DMARC/DNS steps apply to the **Resend** (custom-domain) path.
+
+Every message is also sent with the headers filters expect from legitimate mail:
+a plaintext **and** HTML part (`multipart/alternative`), `Reply-To`,
+`List-Unsubscribe` **plus a visible unsubscribe link**, `Date`, and a
+domain-aligned `Message-ID` — and each recipient gets their **own** copy (no
+`Bcc:` blast, which is itself a spam pattern). That covers the message-level
+basics; the rest is reputation and engagement:
+
+A brand-new sender has **no reputation**, so the first emails often land in junk
+regardless of content. It improves as you send consistently and recipients
+engage. To accelerate it:
 
 1. **Add a DMARC record** (the biggest single lever). Resend's domain
    verification sets up SPF and DKIM; DMARC is the third piece and a strong trust
@@ -254,17 +279,54 @@ recipients engage. To accelerate it:
    * Start with `p=none` (monitor only). Wait a few minutes, then check it at
      a tool like https://dmarc.postmarkapp.com or mxtoolbox.com.
 2. **Set `REPLY_TO`** to a real inbox you read (e.g. your Gmail). The code then
-   adds `Reply-To` and a `List-Unsubscribe` header — both make filters trust the
-   mail more. (Set `LIST_UNSUBSCRIBE` to a different address/URL to override.)
+   adds `Reply-To`, a `List-Unsubscribe` header, **and a visible Unsubscribe link
+   in the footer** — a real, working unsubscribe path is one of the strongest
+   trust signals a filter looks for, and it satisfies Gmail/Yahoo's bulk-sender
+   rules. (Set `LIST_UNSUBSCRIBE` to a different address/URL to override.)
 3. **Have recipients mark it "Not junk"** once and, in Gmail, add the sender to
    their Contacts. A reply from them is the strongest possible signal.
 4. **Send consistently** (the weekday schedule does this) and keep the list to
    people who expect it. Avoid sudden spikes in volume.
 5. **Keep the from-address stable** — don't change `SENDER_EMAIL` often.
 
-SPF + DKIM (from Resend) + DMARC + a stable from-address + List-Unsubscribe is
-the standard recipe; after a week or two of steady sending, inbox placement
-usually settles.
+SPF + DKIM + DMARC + a stable from-address + List-Unsubscribe is the standard
+recipe; after a week or two of steady sending, inbox placement usually settles.
+
+### Getting into the Focused inbox (Outlook) / Gmail's Primary tab
+
+**Junk/Spam and Focused-vs-Other are two different decisions.** The steps above
+keep you out of Junk. **Focused placement is driven almost entirely by the
+recipient's behavior**, and Microsoft exposes *no header a sender can set to
+force it* — it's a per-recipient machine-learning call about engagement. The
+upside: because you receive the brief yourself, you can fix your own inbox in one
+move, and ask colleagues to do the same.
+
+**In Outlook — do one of these once; it's permanent:**
+- Right-click the brief → **Move → Always move to Focused**, or
+- Add the sender to **Contacts (People)**, or
+- **Settings → Mail → Junk email → Safe senders and domains** → add the
+  from-address.
+
+Any of these creates a durable rule so every future edition lands in **Focused**.
+
+**In Gmail (if a recipient uses Gmail):** drag the message from *Promotions* into
+the *Primary* tab and choose **“Do this for future messages,”** or add the sender
+to Contacts. A single **reply** is the strongest signal of all.
+
+Why headers can't do this: a brand-new automated newsletter looks "bulk" at first
+— ironically the `List-Unsubscribe` header we add for Junk avoidance even
+reinforces that — so it may start in Other/Promotions until either you safelist
+it (above) or a few editions of engagement train the classifier. Authentication
+gets you *into the mailbox*; engagement decides *which tab*.
+
+### Want a true one-click unsubscribe later?
+
+The current unsubscribe is a `mailto:` (you remove the address from `RECIPIENTS`).
+The strongest remaining *technical* lever is an **RFC 8058 one-click** unsubscribe
+— a header (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`) plus an HTTPS
+endpoint the mailbox provider can POST to. It needs a small free serverless
+function (e.g. a Cloudflare Worker) to auto-remove the address. If you ever want
+it, set `LIST_UNSUBSCRIBE` to that endpoint's URL and it slots straight in.
 
 ---
 

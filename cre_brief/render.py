@@ -12,7 +12,7 @@ Nothing here talks to an API or invents data; it only formats what it is given.
 from __future__ import annotations
 
 import html
-from typing import List
+from typing import List, Optional
 
 from .models import Brief, TapeRow
 
@@ -110,11 +110,33 @@ def _headlines_html(brief: Brief) -> str:
     return f'<ul style="margin:0;padding-left:18px;">{"".join(items)}</ul>'
 
 
-def render_html(brief: Brief) -> str:
-    """Return the full HTML email body for ``brief``."""
+def _unsubscribe_html(unsubscribe_link: Optional[str]) -> str:
+    """A footer 'Unsubscribe' line for the body, or '' when no target is set.
+
+    A visible unsubscribe link (alongside the List-Unsubscribe header) is one
+    of the strongest signals a mailbox provider uses to trust a bulk sender, so
+    it directly helps inbox placement.
+    """
+    if not unsubscribe_link:
+        return ""
+    href = _esc(unsubscribe_link)
+    return (
+        f'<br>You’re receiving this because your address was added to the '
+        f'CRE Finance Brief list. '
+        f'<a href="{href}" style="color:{_MUTED};text-decoration:underline;">Unsubscribe</a>.'
+    )
+
+
+def render_html(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
+    """Return the full HTML email body for ``brief``.
+
+    ``unsubscribe_link`` (a URL or ``mailto:``) renders a visible Unsubscribe
+    link in the footer; pass ``None`` to omit it.
+    """
     s = brief.synthesis
     sources = ", ".join(_esc(name) for name in brief.sources_used) or "—"
     fred_note = "FRED (Federal Reserve Bank of St. Louis)"
+    unsubscribe = _unsubscribe_html(unsubscribe_link)
 
     return f"""<!DOCTYPE html>
 <html lang="en"><head>
@@ -178,7 +200,7 @@ def render_html(brief: Brief) -> str:
           News: {sources}.<br>
           Generated {_esc(brief.generated_at_utc)} &middot; synthesis by {_esc(brief.model_name)}
           from {brief.item_count} item(s).<br>
-          <em>Informational only — not investment, legal, tax or accounting advice.</em>
+          <em>Informational only — not investment, legal, tax or accounting advice.</em>{unsubscribe}
         </div>
       </td></tr>
 
@@ -195,8 +217,12 @@ def _rule(width: int = 60) -> str:
     return "-" * width
 
 
-def render_text(brief: Brief) -> str:
-    """Return the plaintext fallback body for ``brief``."""
+def render_text(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
+    """Return the plaintext fallback body for ``brief``.
+
+    ``unsubscribe_link`` (a URL or ``mailto:``) adds a visible unsubscribe line
+    to the footer; pass ``None`` to omit it.
+    """
     s = brief.synthesis
     out: List[str] = []
     out.append("CRE FINANCE BRIEF")
@@ -251,4 +277,13 @@ def render_text(brief: Brief) -> str:
     out.append(f"Generated {brief.generated_at_utc} | synthesis by {brief.model_name} "
                f"from {brief.item_count} item(s).")
     out.append("Informational only - not investment, legal, tax or accounting advice.")
+
+    if unsubscribe_link:
+        out.append("")
+        if unsubscribe_link.startswith("mailto:"):
+            addr = unsubscribe_link[len("mailto:"):].split("?", 1)[0]
+            out.append(f'To unsubscribe, email {addr} with the subject "unsubscribe".')
+        else:
+            out.append(f"To unsubscribe, visit: {unsubscribe_link}")
+
     return "\n".join(out)

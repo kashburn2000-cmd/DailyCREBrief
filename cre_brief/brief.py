@@ -81,13 +81,15 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
     config.validate(require_send=send)
 
     brief = build_brief(config)
-    html = render_html(brief)
-    text = render_text(brief)
+    unsubscribe_link = config.unsubscribe_link()
+    html = render_html(brief, unsubscribe_link=unsubscribe_link)
+    text = render_text(brief, unsubscribe_link=unsubscribe_link)
 
     if not send:
         print("\n" + "=" * 70)
         print(f"DRY RUN — would send: {brief.subject}")
         print(f"Delivery method: {config.delivery_method or '(none configured)'}")
+        print(f"Unsubscribe link: {unsubscribe_link or '(none — set REPLY_TO or LIST_UNSUBSCRIBE)'}")
         if config.recipients:
             print(f"Recipients: {', '.join(config.recipients)}")
         else:

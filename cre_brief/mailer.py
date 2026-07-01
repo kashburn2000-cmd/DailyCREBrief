@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass, field
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import formataddr
+from email.utils import formataddr, formatdate, make_msgid
 from typing import List, Optional
 
 import requests
@@ -58,6 +58,13 @@ def _build_mime(sender_name: str, sender_addr: str, recipient: str,
     msg["Subject"] = subject
     msg["From"] = formataddr((sender_name, sender_addr))
     msg["To"] = recipient
+    # RFC 5322 requires Date and Message-ID. Set them at the source (as mature
+    # mail libraries do) instead of relying on the relay to backfill them: a
+    # well-formed, self-consistent message is a small but real trust signal, and
+    # a Message-ID aligned to the sender's own domain looks less machine-made.
+    msg["Date"] = formatdate(localtime=True)
+    domain = sender_addr.rsplit("@", 1)[-1] if "@" in sender_addr else "localhost"
+    msg["Message-ID"] = make_msgid(domain=domain)
     if reply_to:
         msg["Reply-To"] = reply_to
     if unsubscribe:
