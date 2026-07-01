@@ -19,7 +19,8 @@ Each edition has a fixed structure a reader can skim in 60 seconds:
   with a one-line takeaway + source link. Individual property deals are
   deliberately de-prioritized.
 * **One to Watch** — a single forward-looking line.
-* **Footer** — data sources, timestamp, and a "not investment advice" disclaimer.
+* **Footer** — data sources, timestamp, a "not investment advice" disclaimer, and
+  a one-click **Unsubscribe** link.
 
 <sub>Rendered HTML preview: run a dry run (below) and open `out/brief.rendered.html`.</sub>
 
@@ -210,6 +211,17 @@ Stored in the `RECIPIENTS` secret (comma-separated). Edit the secret; no code or
 redeploy needed. Each recipient gets their own copy (addresses are not shared
 between recipients).
 
+### Unsubscribes
+Every email carries a visible **Unsubscribe** link in the footer *and* a
+`List-Unsubscribe` header, both pointing at the address in `LIST_UNSUBSCRIBE`
+(falls back to `REPLY_TO`, then your `GMAIL_ADDRESS`). With the default
+`mailto:` target, clicking Unsubscribe opens a pre-filled email **from the
+recipient's own address** to your inbox — so you always know exactly who asked
+to leave. To honor it, delete that address from the `RECIPIENTS` secret (Settings
+→ Secrets and variables → Actions). No server or database is involved, which
+keeps the project at $0. Prefer a hosted form instead of email? Set
+`LIST_UNSUBSCRIBE` to an https URL and the link points there.
+
 ### Feeds
 Edit the `FEEDS` list at the top of **`cre_brief/feeds.py`**. Each entry is just
 `Feed("Display Name", "https://…/feed-url")`. Every run validates each feed and
@@ -254,8 +266,10 @@ recipients engage. To accelerate it:
    * Start with `p=none` (monitor only). Wait a few minutes, then check it at
      a tool like https://dmarc.postmarkapp.com or mxtoolbox.com.
 2. **Set `REPLY_TO`** to a real inbox you read (e.g. your Gmail). The code then
-   adds `Reply-To` and a `List-Unsubscribe` header — both make filters trust the
-   mail more. (Set `LIST_UNSUBSCRIBE` to a different address/URL to override.)
+   adds `Reply-To`, a `List-Unsubscribe` header, **and a visible Unsubscribe link
+   in the footer** — a real, working unsubscribe path is one of the strongest
+   trust signals a filter looks for, and it satisfies Gmail/Yahoo's bulk-sender
+   rules. (Set `LIST_UNSUBSCRIBE` to a different address/URL to override.)
 3. **Have recipients mark it "Not junk"** once and, in Gmail, add the sender to
    their Contacts. A reply from them is the strongest possible signal.
 4. **Send consistently** (the weekday schedule does this) and keep the list to

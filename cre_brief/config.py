@@ -104,20 +104,37 @@ class Config:
             return "resend"
         return None
 
-    def unsubscribe_header(self) -> Optional[str]:
-        """Build a List-Unsubscribe header value, or None if nothing usable is set.
+    def _unsubscribe_target(self) -> str:
+        """Where unsubscribe requests should go — an email address or an https URL.
 
-        Falls back to reply_to when LIST_UNSUBSCRIBE is unset, so a single
-        REPLY_TO gives both a reply target and a working unsubscribe contact.
+        LIST_UNSUBSCRIBE wins if set; otherwise REPLY_TO doubles as the
+        unsubscribe contact, and finally the Gmail sending account (always a
+        real, monitored inbox) so a Gmail sender always has a working target
+        even if it set neither. Returns "" when nothing usable is configured.
         """
-        target = self.list_unsubscribe or self.reply_to
+        return self.list_unsubscribe or self.reply_to or self.gmail_address or ""
+
+    def unsubscribe_link(self) -> Optional[str]:
+        """A clickable unsubscribe destination for the email body, or None.
+
+        Returns an https URL unchanged, or a ``mailto:`` for an email address.
+        The List-Unsubscribe header wraps this exact value, so the visible
+        link and the header always point to the same place — a mismatch
+        between them looks suspicious to spam filters.
+        """
+        target = self._unsubscribe_target()
         if not target:
             return None
         if target.startswith(("http://", "https://")):
-            return f"<{target}>"
+            return target
         if "@" in target:
-            return f"<mailto:{target}?subject=unsubscribe>"
+            return f"mailto:{target}?subject=unsubscribe"
         return None
+
+    def unsubscribe_header(self) -> Optional[str]:
+        """Build a List-Unsubscribe header value, or None if nothing usable is set."""
+        link = self.unsubscribe_link()
+        return f"<{link}>" if link else None
 
     # ------------------------------------------------------------------
     @classmethod

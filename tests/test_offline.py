@@ -247,6 +247,50 @@ def test_unsubscribe_header_helper():
     print("  ✓ unsubscribe header builds from reply_to / URL / falls back to None")
 
 
+def test_unsubscribe_link_and_header_agree():
+    from cre_brief.config import Config
+    # Email target -> mailto link; the header wraps that exact same link so the
+    # visible unsubscribe and the List-Unsubscribe header never disagree.
+    c = Config(reply_to="me@inbox.com")
+    assert c.unsubscribe_link() == "mailto:me@inbox.com?subject=unsubscribe"
+    assert c.unsubscribe_header() == f"<{c.unsubscribe_link()}>"
+    # LIST_UNSUBSCRIBE (https URL) wins over REPLY_TO and is used verbatim.
+    c2 = Config(reply_to="me@inbox.com", list_unsubscribe="https://example.com/unsub")
+    assert c2.unsubscribe_link() == "https://example.com/unsub"
+    assert c2.unsubscribe_header() == "<https://example.com/unsub>"
+    # The Gmail sending account is the final fallback, so a Gmail sender always
+    # has a working unsubscribe target even with no REPLY_TO/LIST_UNSUBSCRIBE set.
+    c3 = Config(gmail_address="sender@gmail.com")
+    assert c3.unsubscribe_link() == "mailto:sender@gmail.com?subject=unsubscribe"
+    # Nothing configured -> no link, no header.
+    assert Config().unsubscribe_link() is None
+    assert Config().unsubscribe_header() is None
+    print("  ✓ unsubscribe link + header agree; gmail address is the final fallback")
+
+
+def test_render_shows_unsubscribe_link_when_provided():
+    points = {"DGS10": SeriesPoint("DGS10", latest=4.28, latest_date="2026-06-25",
+                                   prior=4.25, prior_date="2026-06-24")}
+    tape, used = build_tape(FakeFred(points))
+    synth = Synthesis(tape_context="", fed_watch="", cmbs_watch="", headlines=[], one_to_watch="")
+    brief = Brief(
+        date_str="Friday, June 26, 2026", subject="CRE Finance Brief",
+        tape=tape, synthesis=synth, sources_used=["Wolf Street"], fred_series_used=used,
+        generated_at_utc="2026-06-26 11:00 UTC", model_name="gemini-3.5-flash", item_count=1,
+    )
+    link = "mailto:me@inbox.com?subject=unsubscribe"
+    html = render_html(brief, unsubscribe_link=link)
+    text = render_text(brief, unsubscribe_link=link)
+    # HTML: a real clickable Unsubscribe anchor pointing at the exact target.
+    assert f'href="{link}"' in html and ">Unsubscribe</a>" in html
+    # Text: a plain instruction naming the address (mailto stripped for display).
+    assert "me@inbox.com" in text and 'subject "unsubscribe"' in text
+    # Omitted by default: no unsubscribe UI when no target is passed.
+    assert "Unsubscribe" not in render_html(brief)
+    assert "unsubscribe" not in render_text(brief).lower()
+    print("  ✓ render shows a visible Unsubscribe link only when a target is set")
+
+
 def test_gmail_login_failure_marks_all_failed():
     from cre_brief.mailer import send_via_gmail
 
@@ -419,6 +463,8 @@ def main():
         test_render_preserves_newlines,
         test_gmail_send_per_recipient,
         test_unsubscribe_header_helper,
+        test_unsubscribe_link_and_header_agree,
+        test_render_shows_unsubscribe_link_when_provided,
         test_gmail_login_failure_marks_all_failed,
         test_delivery_method_selection_and_validate,
         test_delivery_override_forces_method,
