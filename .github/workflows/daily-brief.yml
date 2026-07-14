@@ -70,6 +70,11 @@ jobs:
           # Deliverability (optional but recommended — helps avoid spam folders).
           REPLY_TO: ${{ secrets.REPLY_TO }}
           LIST_UNSUBSCRIBE: ${{ secrets.LIST_UNSUBSCRIBE }}
+          # One-click unsubscribe worker (optional; see unsubscribe-worker/).
+          # FEED_URL = the worker's /list endpoint; FEED_SECRET = its Bearer
+          # secret. When set, unsubscribed recipients are dropped automatically.
+          UNSUBSCRIBE_FEED_URL: ${{ secrets.UNSUBSCRIBE_FEED_URL }}
+          UNSUBSCRIBE_FEED_SECRET: ${{ secrets.UNSUBSCRIBE_FEED_SECRET }}
           # Optional overrides — set as secrets or repo variables if you want to
           # change them without editing code. Defaults apply if unset.
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}

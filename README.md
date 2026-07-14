@@ -219,13 +219,12 @@ Every email carries a visible **Unsubscribe button** in the footer *and* a
 recipient's own address** to your inbox — so you always know exactly who asked
 to leave. To honor it, delete that address from the `RECIPIENTS` secret (Settings
 → Secrets and variables → Actions). No server or database is involved, which
-keeps the project at $0. Prefer a hosted form instead of email? Set
-`LIST_UNSUBSCRIBE` to an https URL and the button points there — and the sender
-additionally emits the **RFC 8058 one-click** headers
-(`List-Unsubscribe-Post: List-Unsubscribe=One-Click`), which makes Gmail and
-Outlook show their own Unsubscribe affordance at the top of the message. The
-endpoint must accept a bare `POST` (mailbox providers unsubscribe by POSTing to
-it, with no page load).
+keeps the project at $0.
+
+Want unsubscribes honored automatically, with no inbox monitoring or secret
+editing? Deploy the included worker — see
+[**True one-click unsubscribe**](#true-one-click-unsubscribe-included--strongest-sender-side-lever)
+below and [`unsubscribe-worker/README.md`](unsubscribe-worker/README.md).
 
 ### Feeds
 Edit the `FEEDS` list at the top of **`cre_brief/feeds.py`**. Each entry is just
@@ -326,19 +325,36 @@ reinforces that — so it may start in Other/Promotions until either you safelis
 it (above) or a few editions of engagement train the classifier. Authentication
 gets you *into the mailbox*; engagement decides *which tab*.
 
-### Want a true one-click unsubscribe?
+### True one-click unsubscribe (included — strongest sender-side lever)
 
-The default unsubscribe is a `mailto:` (you remove the address from `RECIPIENTS`).
-The strongest remaining *technical* lever is an **RFC 8058 one-click** unsubscribe
-— the `List-Unsubscribe-Post: List-Unsubscribe=One-Click` header plus an HTTPS
-endpoint the mailbox provider can POST to. **The sender already supports this:**
-set `LIST_UNSUBSCRIBE` to an https URL and both headers are emitted automatically
-(a `mailto:` target never advertises one-click — providers would POST to nowhere).
-The endpoint itself needs a small free serverless function (e.g. a Cloudflare
-Worker) that accepts a bare `POST` and removes the address. This is the header
-Gmail/Outlook key their own top-of-message Unsubscribe affordance on, and it's
-part of Gmail/Yahoo's bulk-sender requirements — the closest thing to a
+The default unsubscribe is a `mailto:` (you remove the address from `RECIPIENTS`
+by hand). The strongest remaining *technical* lever is an **RFC 8058 one-click**
+unsubscribe — the `List-Unsubscribe-Post: List-Unsubscribe=One-Click` header
+plus an HTTPS endpoint the mailbox provider can POST to. It's the header
+Gmail/Outlook key their own top-of-message Unsubscribe affordance on, part of
+Gmail/Yahoo's bulk-sender requirements, and the closest thing to a
 sender-controllable focused-inbox signal.
+
+**This repo ships the endpoint**: a free Cloudflare Worker in
+[`unsubscribe-worker/`](unsubscribe-worker/README.md) (deploys in ~5 minutes).
+Once deployed, set three secrets and everything activates automatically:
+
+* `LIST_UNSUBSCRIBE` → `https://<your-worker>.workers.dev/?email={email}` —
+  the `{email}` placeholder becomes each recipient's address at send time, so
+  a one-click POST identifies exactly who unsubscribed. Both one-click headers
+  are then emitted on every send (an https URL is what enables them; a
+  `mailto:` target never advertises one-click — providers would POST to
+  nowhere).
+* `UNSUBSCRIBE_FEED_URL` + `UNSUBSCRIBE_FEED_SECRET` → the worker's `/list`
+  endpoint and its Bearer secret. Every send then fetches the unsubscribed
+  list first and **drops those recipients automatically** — no manual
+  `RECIPIENTS` editing, and unsubscribes are honored by the very next edition.
+  If the feed is unreachable the send aborts rather than risk mailing someone
+  who already left.
+
+The footer's visible **Unsubscribe** button points at the same per-recipient
+URL: humans get a confirmation page (nothing unsubscribes on a bare GET, so
+corporate link-scanners can't unsubscribe people by prefetching links).
 
 ---
 

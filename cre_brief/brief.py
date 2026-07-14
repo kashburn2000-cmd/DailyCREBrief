@@ -19,6 +19,7 @@ from .gemini import GeminiClient
 from .mailer import send_via_gmail, send_via_resend
 from .models import Brief
 from .render import render_html, render_text
+from .suppression import SuppressionError, fetch_suppressed, filter_recipients
 from .synthesize import prioritize_items, synthesize
 
 log = logging.getLogger("cre_brief.brief")
@@ -91,6 +92,7 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
         print(f"Delivery method: {config.delivery_method or '(none configured)'}")
         print(f"Unsubscribe link: {unsubscribe_link or '(none — set REPLY_TO or LIST_UNSUBSCRIBE)'}")
         print(f"One-click (RFC 8058): {'yes' if config.unsubscribe_post_header() else 'no — needs an https LIST_UNSUBSCRIBE endpoint'}")
+        print(f"Suppression feed: {config.unsubscribe_feed_url or '(none — unsubscribes are honored manually)'}")
         if config.recipients:
             print(f"Recipients: {', '.join(config.recipients)}")
         else:
@@ -113,16 +115,35 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
         log.error("No FRED data and no news items — refusing to send an empty brief.")
         return 1
 
+    # Honor unsubscribes recorded by the one-click worker before sending.
+    # Fail-closed: mailing someone who unsubscribed is a spam-complaint risk
+    # that outweighs skipping one edition, so an unreachable feed aborts.
+    recipients = config.recipients
+    if config.unsubscribe_feed_url:
+        try:
+            suppressed = fetch_suppressed(
+                config.unsubscribe_feed_url, config.unsubscribe_feed_secret
+            )
+        except SuppressionError as exc:
+            log.error("Refusing to send — %s", exc)
+            return 1
+        recipients, dropped = filter_recipients(recipients, suppressed)
+        if dropped:
+            log.info("Honoring %d unsubscribe(s): %s", len(dropped), ", ".join(dropped))
+        if not recipients:
+            log.info("Every recipient has unsubscribed — nothing to send.")
+            return 0
+
     method = config.delivery_method
     unsubscribe = config.unsubscribe_header()
     unsubscribe_post = config.unsubscribe_post_header()
-    log.info("Sending via %s to %d recipient(s)", method, len(config.recipients))
+    log.info("Sending via %s to %d recipient(s)", method, len(recipients))
     if method == "gmail":
         result = send_via_gmail(
             gmail_address=config.gmail_address,
             app_password=config.gmail_app_password,
             sender_name=config.sender_name,
-            recipients=config.recipients,
+            recipients=recipients,
             subject=brief.subject,
             html=html,
             text=text,
@@ -134,7 +155,7 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
         result = send_via_resend(
             api_key=config.resend_api_key,
             sender=config.sender_email,
-            recipients=config.recipients,
+            recipients=recipients,
             subject=brief.subject,
             html=html,
             text=text,

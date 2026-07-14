@@ -281,6 +281,94 @@ def test_one_click_headers_reach_the_wire():
     print("  ✓ one-click headers reach the wire on both gmail and resend paths")
 
 
+def test_email_placeholder_personalizes_per_recipient():
+    from cre_brief.mailer import send_via_gmail, send_via_resend
+    # One template URL with {email} must become a distinct, URL-encoded link
+    # per recipient in the header AND both body parts (they must agree).
+    unsub_tpl = "<https://unsub.example.com/?email={email}>"
+    html_tpl = '<a href="https://unsub.example.com/?email={email}">Unsubscribe</a>'
+    text_tpl = "To unsubscribe, visit: https://unsub.example.com/?email={email}"
+    sent = []
+
+    class FakeSMTP:
+        def login(self, addr, pw):
+            pass
+        def sendmail(self, frm, to, raw):
+            sent.append((to[0], raw))
+        def quit(self):
+            pass
+
+    send_via_gmail(
+        "me@gmail.com", "pw", "CRE Brief", ["a@x.com", "b@y.com"], "Subj",
+        html_tpl, text_tpl, unsubscribe=unsub_tpl,
+        unsubscribe_post="List-Unsubscribe=One-Click",
+        smtp_factory=lambda: FakeSMTP(),
+    )
+    for addr, encoded in (("a@x.com", "a%40x.com"), ("b@y.com", "b%40y.com")):
+        raw = dict(sent)[addr]
+        assert f"List-Unsubscribe: <https://unsub.example.com/?email={encoded}>" in raw
+        assert "{email}" not in raw
+
+    class RecordingSession:
+        def __init__(self):
+            self.payloads = []
+        def post(self, url, headers=None, json=None, timeout=None):
+            self.payloads.append(json)
+            return FakeResponse(200, payload={"id": "msg"})
+
+    session = RecordingSession()
+    send_via_resend("re_key", "Brief <b@ex.com>", ["a@x.com"], "Subj",
+                    html_tpl, text_tpl, unsubscribe=unsub_tpl,
+                    unsubscribe_post="List-Unsubscribe=One-Click",
+                    session=session, sleeper=lambda s: None)
+    payload = session.payloads[0]
+    assert payload["headers"]["List-Unsubscribe"] == "<https://unsub.example.com/?email=a%40x.com>"
+    assert "a%40x.com" in payload["html"] and "a%40x.com" in payload["text"]
+    assert "{email}" not in payload["html"]
+    print("  ✓ {email} placeholder yields per-recipient unsubscribe URLs on both paths")
+
+
+def test_suppression_fetch_and_filter():
+    from cre_brief.suppression import SuppressionError, fetch_suppressed, filter_recipients
+
+    class GetSession:
+        def __init__(self, responses):
+            self._responses = list(responses)
+            self.auth_headers = []
+        def get(self, url, headers=None, timeout=None):
+            self.auth_headers.append((headers or {}).get("Authorization"))
+            return self._responses.pop(0)
+
+    # Happy path: JSON array -> lowercased set; Bearer secret is sent.
+    ok = GetSession([FakeResponse(200, payload=["Gone@X.com", "left@y.com", 42, "not-an-email"])])
+    got = fetch_suppressed("https://w.example/list", secret="s3cret", session=ok,
+                           sleeper=lambda s: None)
+    assert got == {"gone@x.com", "left@y.com"}
+    assert ok.auth_headers == ["Bearer s3cret"]
+
+    # Transient 503 then success -> retried, not fatal.
+    flaky = GetSession([FakeResponse(503, text="down"),
+                        FakeResponse(200, payload=["x@y.com"])])
+    assert fetch_suppressed("https://w.example/list", session=flaky,
+                            sleeper=lambda s: None) == {"x@y.com"}
+
+    # Non-retryable failure -> SuppressionError (caller aborts the send).
+    for bad in ([FakeResponse(403, text="forbidden")],
+                [FakeResponse(200, payload={"not": "a list"})]):
+        try:
+            fetch_suppressed("https://w.example/list", session=GetSession(bad),
+                             sleeper=lambda s: None)
+            raise AssertionError("expected SuppressionError")
+        except SuppressionError:
+            pass
+
+    # Filtering is case/whitespace-insensitive and preserves order.
+    kept, dropped = filter_recipients(["A@x.com", "b@y.com ", "c@z.com"],
+                                      {"a@x.com", "b@y.com"})
+    assert kept == ["c@z.com"] and dropped == ["A@x.com", "b@y.com "]
+    print("  ✓ suppression feed fetch retries, fails closed, and filters recipients")
+
+
 def test_unsubscribe_header_helper():
     from cre_brief.config import Config
     # Falls back to reply_to when LIST_UNSUBSCRIBE is unset.
@@ -524,6 +612,8 @@ def main():
         test_render_preserves_newlines,
         test_gmail_send_per_recipient,
         test_one_click_headers_reach_the_wire,
+        test_email_placeholder_personalizes_per_recipient,
+        test_suppression_fetch_and_filter,
         test_unsubscribe_header_helper,
         test_unsubscribe_one_click_only_for_https,
         test_unsubscribe_link_and_header_agree,

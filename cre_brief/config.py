@@ -70,6 +70,11 @@ class Config:
     # list_unsubscribe = an email or https URL for the List-Unsubscribe header.
     reply_to: str = ""
     list_unsubscribe: str = ""
+    # One-click suppression feed (optional; see unsubscribe-worker/README.md).
+    # The worker's /list endpoint + its Bearer secret. When set, every send
+    # first drops recipients who unsubscribed.
+    unsubscribe_feed_url: str = ""
+    unsubscribe_feed_secret: str = ""
     # Optional override: "gmail" or "resend". Blank = auto-detect. Use this to
     # force a method even when the other's secrets are still present.
     delivery_override: str = ""
@@ -178,6 +183,8 @@ class Config:
             sender_name=os.getenv("SENDER_NAME", DEFAULT_SENDER_NAME).strip() or DEFAULT_SENDER_NAME,
             reply_to=os.getenv("REPLY_TO", "").strip(),
             list_unsubscribe=os.getenv("LIST_UNSUBSCRIBE", "").strip(),
+            unsubscribe_feed_url=os.getenv("UNSUBSCRIBE_FEED_URL", "").strip(),
+            unsubscribe_feed_secret=os.getenv("UNSUBSCRIBE_FEED_SECRET", "").strip(),
             delivery_override=os.getenv("DELIVERY_METHOD", "").strip(),
             recipients=_split_csv(os.getenv("RECIPIENTS")),
             gemini_model=os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL,

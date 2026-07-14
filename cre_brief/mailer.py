@@ -22,6 +22,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, formatdate, make_msgid
 from typing import List, Optional
+from urllib.parse import quote
 
 import requests
 
@@ -36,6 +37,19 @@ RETRY_STATUS = {429, 500, 502, 503}
 # --- Gmail ------------------------------------------------------------------
 GMAIL_SMTP_HOST = "smtp.gmail.com"
 GMAIL_SMTP_PORT = 587
+
+
+def _personalize(value: Optional[str], recipient: str) -> Optional[str]:
+    """Substitute a literal ``{email}`` placeholder with the recipient (URL-encoded).
+
+    Lets one unsubscribe URL (e.g. ``https://…/?email={email}``) become a
+    per-recipient link, so an RFC 8058 one-click POST identifies exactly who
+    unsubscribed. Applied to the List-Unsubscribe header AND both body parts,
+    keeping the visible button and the header pointing at the same place.
+    """
+    if value and "{email}" in value:
+        return value.replace("{email}", quote(recipient, safe=""))
+    return value
 
 
 @dataclass
@@ -118,8 +132,9 @@ def send_via_gmail(
 
     try:
         for recipient in recipients:
-            msg = _build_mime(sender_name, gmail_address, recipient, subject, html, text,
-                              reply_to=reply_to, unsubscribe=unsubscribe,
+            msg = _build_mime(sender_name, gmail_address, recipient, subject,
+                              _personalize(html, recipient), _personalize(text, recipient),
+                              reply_to=reply_to, unsubscribe=_personalize(unsubscribe, recipient),
                               unsubscribe_post=unsubscribe_post)
             try:
                 server.sendmail(gmail_address, [recipient], msg.as_string())
@@ -217,8 +232,9 @@ def send_via_resend(
     session = session or requests.Session()
     result = SendResult()
     for recipient in recipients:
-        if _resend_one(session, api_key, sender, recipient, subject, html, text, sleeper,
-                       reply_to=reply_to, unsubscribe=unsubscribe,
+        if _resend_one(session, api_key, sender, recipient, subject,
+                       _personalize(html, recipient), _personalize(text, recipient), sleeper,
+                       reply_to=reply_to, unsubscribe=_personalize(unsubscribe, recipient),
                        unsubscribe_post=unsubscribe_post):
             result.sent.append(recipient)
         else:
