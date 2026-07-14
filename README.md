@@ -20,7 +20,7 @@ Each edition has a fixed structure a reader can skim in 60 seconds:
   deliberately de-prioritized.
 * **One to Watch** — a single forward-looking line.
 * **Footer** — data sources, timestamp, a "not investment advice" disclaimer, and
-  a one-click **Unsubscribe** link.
+  a visible **Unsubscribe** button.
 
 <sub>Rendered HTML preview: run a dry run (below) and open `out/brief.rendered.html`.</sub>
 
@@ -212,7 +212,7 @@ redeploy needed. Each recipient gets their own copy (addresses are not shared
 between recipients).
 
 ### Unsubscribes
-Every email carries a visible **Unsubscribe** link in the footer *and* a
+Every email carries a visible **Unsubscribe button** in the footer *and* a
 `List-Unsubscribe` header, both pointing at the address in `LIST_UNSUBSCRIBE`
 (falls back to `REPLY_TO`, then your `GMAIL_ADDRESS`). With the default
 `mailto:` target, clicking Unsubscribe opens a pre-filled email **from the
@@ -220,7 +220,12 @@ recipient's own address** to your inbox — so you always know exactly who asked
 to leave. To honor it, delete that address from the `RECIPIENTS` secret (Settings
 → Secrets and variables → Actions). No server or database is involved, which
 keeps the project at $0. Prefer a hosted form instead of email? Set
-`LIST_UNSUBSCRIBE` to an https URL and the link points there.
+`LIST_UNSUBSCRIBE` to an https URL and the button points there — and the sender
+additionally emits the **RFC 8058 one-click** headers
+(`List-Unsubscribe-Post: List-Unsubscribe=One-Click`), which makes Gmail and
+Outlook show their own Unsubscribe affordance at the top of the message. The
+endpoint must accept a bare `POST` (mailbox providers unsubscribe by POSTing to
+it, with no page load).
 
 ### Feeds
 Edit the `FEEDS` list at the top of **`cre_brief/feeds.py`**. Each entry is just
@@ -262,7 +267,8 @@ aren't missed.
 
 Every message is also sent with the headers filters expect from legitimate mail:
 a plaintext **and** HTML part (`multipart/alternative`), `Reply-To`,
-`List-Unsubscribe` **plus a visible unsubscribe link**, `Date`, and a
+`List-Unsubscribe` (with RFC 8058 one-click when the target is an https URL)
+**plus a visible unsubscribe button**, `Date`, and a
 domain-aligned `Message-ID` — and each recipient gets their **own** copy (no
 `Bcc:` blast, which is itself a spam pattern). That covers the message-level
 basics; the rest is reputation and engagement:
@@ -279,10 +285,11 @@ engage. To accelerate it:
    * Start with `p=none` (monitor only). Wait a few minutes, then check it at
      a tool like https://dmarc.postmarkapp.com or mxtoolbox.com.
 2. **Set `REPLY_TO`** to a real inbox you read (e.g. your Gmail). The code then
-   adds `Reply-To`, a `List-Unsubscribe` header, **and a visible Unsubscribe link
-   in the footer** — a real, working unsubscribe path is one of the strongest
-   trust signals a filter looks for, and it satisfies Gmail/Yahoo's bulk-sender
-   rules. (Set `LIST_UNSUBSCRIBE` to a different address/URL to override.)
+   adds `Reply-To`, a `List-Unsubscribe` header, **and a visible Unsubscribe
+   button in the footer** — a real, working unsubscribe path is one of the
+   strongest trust signals a filter looks for, and it satisfies Gmail/Yahoo's
+   bulk-sender rules. (Set `LIST_UNSUBSCRIBE` to a different address/URL to
+   override; an https URL upgrades it to RFC 8058 one-click.)
 3. **Have recipients mark it "Not junk"** once and, in Gmail, add the sender to
    their Contacts. A reply from them is the strongest possible signal.
 4. **Send consistently** (the weekday schedule does this) and keep the list to
@@ -319,14 +326,19 @@ reinforces that — so it may start in Other/Promotions until either you safelis
 it (above) or a few editions of engagement train the classifier. Authentication
 gets you *into the mailbox*; engagement decides *which tab*.
 
-### Want a true one-click unsubscribe later?
+### Want a true one-click unsubscribe?
 
-The current unsubscribe is a `mailto:` (you remove the address from `RECIPIENTS`).
+The default unsubscribe is a `mailto:` (you remove the address from `RECIPIENTS`).
 The strongest remaining *technical* lever is an **RFC 8058 one-click** unsubscribe
-— a header (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`) plus an HTTPS
-endpoint the mailbox provider can POST to. It needs a small free serverless
-function (e.g. a Cloudflare Worker) to auto-remove the address. If you ever want
-it, set `LIST_UNSUBSCRIBE` to that endpoint's URL and it slots straight in.
+— the `List-Unsubscribe-Post: List-Unsubscribe=One-Click` header plus an HTTPS
+endpoint the mailbox provider can POST to. **The sender already supports this:**
+set `LIST_UNSUBSCRIBE` to an https URL and both headers are emitted automatically
+(a `mailto:` target never advertises one-click — providers would POST to nowhere).
+The endpoint itself needs a small free serverless function (e.g. a Cloudflare
+Worker) that accepts a bare `POST` and removes the address. This is the header
+Gmail/Outlook key their own top-of-message Unsubscribe affordance on, and it's
+part of Gmail/Yahoo's bulk-sender requirements — the closest thing to a
+sender-controllable focused-inbox signal.
 
 ---
 

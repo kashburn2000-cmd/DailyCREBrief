@@ -136,6 +136,20 @@ class Config:
         link = self.unsubscribe_link()
         return f"<{link}>" if link else None
 
+    def unsubscribe_post_header(self) -> Optional[str]:
+        """RFC 8058 one-click value for List-Unsubscribe-Post, or None.
+
+        Gmail and Outlook only honor one-click unsubscribe (the button they
+        render at the top of the message — a strong focused-inbox/Primary-tab
+        signal) when List-Unsubscribe carries an **https** URL that accepts a
+        bare POST. A ``mailto:`` target must not advertise one-click, so this
+        returns None unless the configured target is an https URL.
+        """
+        link = self.unsubscribe_link()
+        if link and link.startswith("https://"):
+            return "List-Unsubscribe=One-Click"
+        return None
+
     # ------------------------------------------------------------------
     @classmethod
     def load(cls) -> "Config":

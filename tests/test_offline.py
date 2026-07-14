@@ -237,6 +237,50 @@ def test_gmail_send_per_recipient():
     print("  ✓ gmail sends multipart msg per recipient with Reply-To + List-Unsubscribe")
 
 
+def test_one_click_headers_reach_the_wire():
+    from cre_brief.mailer import send_via_gmail, send_via_resend
+    # Gmail: List-Unsubscribe-Post rides along only when provided.
+    sent = []
+
+    class FakeSMTP:
+        def login(self, addr, pw):
+            pass
+        def sendmail(self, frm, to, raw):
+            sent.append(raw)
+        def quit(self):
+            pass
+
+    send_via_gmail(
+        "me@gmail.com", "pw", "CRE Brief", ["a@x.com"], "Subj", "<b>hi</b>", "hi",
+        unsubscribe="<https://example.com/unsub>",
+        unsubscribe_post="List-Unsubscribe=One-Click",
+        smtp_factory=lambda: FakeSMTP(),
+    )
+    assert "List-Unsubscribe: <https://example.com/unsub>" in sent[0]
+    assert "List-Unsubscribe-Post: List-Unsubscribe=One-Click" in sent[0]
+
+    # Resend: both headers land in the API payload.
+    class RecordingSession:
+        def __init__(self):
+            self.payloads = []
+        def post(self, url, headers=None, json=None, timeout=None):
+            self.payloads.append(json)
+            return FakeResponse(200, payload={"id": "msg_1"})
+
+    session = RecordingSession()
+    send_via_resend(
+        "re_key", "Brief <b@ex.com>", ["a@x.com"], "Subj", "<b>hi</b>", "hi",
+        unsubscribe="<https://example.com/unsub>",
+        unsubscribe_post="List-Unsubscribe=One-Click",
+        session=session, sleeper=lambda s: None,
+    )
+    assert session.payloads[0]["headers"] == {
+        "List-Unsubscribe": "<https://example.com/unsub>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+    print("  ✓ one-click headers reach the wire on both gmail and resend paths")
+
+
 def test_unsubscribe_header_helper():
     from cre_brief.config import Config
     # Falls back to reply_to when LIST_UNSUBSCRIBE is unset.
@@ -248,6 +292,18 @@ def test_unsubscribe_header_helper():
     # Nothing configured -> no header.
     assert Config().unsubscribe_header() is None
     print("  ✓ unsubscribe header builds from reply_to / URL / falls back to None")
+
+
+def test_unsubscribe_one_click_only_for_https():
+    from cre_brief.config import Config
+    # RFC 8058 one-click needs an https endpoint that accepts a POST — a
+    # mailto: target must never advertise it.
+    assert Config(list_unsubscribe="https://example.com/unsub").unsubscribe_post_header() \
+        == "List-Unsubscribe=One-Click"
+    assert Config(reply_to="me@inbox.com").unsubscribe_post_header() is None
+    assert Config(gmail_address="s@gmail.com").unsubscribe_post_header() is None
+    assert Config().unsubscribe_post_header() is None
+    print("  ✓ List-Unsubscribe-Post advertised only for an https unsubscribe URL")
 
 
 def test_unsubscribe_link_and_header_agree():
@@ -284,14 +340,16 @@ def test_render_shows_unsubscribe_link_when_provided():
     link = "mailto:me@inbox.com?subject=unsubscribe"
     html = render_html(brief, unsubscribe_link=link)
     text = render_text(brief, unsubscribe_link=link)
-    # HTML: a real clickable Unsubscribe anchor pointing at the exact target.
+    # HTML: a real clickable Unsubscribe button pointing at the exact target.
     assert f'href="{link}"' in html and ">Unsubscribe</a>" in html
+    # ...rendered as a table-based button (survives Gmail/Outlook), not bare text.
+    assert html.index('border-radius:6px;background:') < html.index(">Unsubscribe</a>")
     # Text: a plain instruction naming the address (mailto stripped for display).
     assert "me@inbox.com" in text and 'subject "unsubscribe"' in text
     # Omitted by default: no unsubscribe UI when no target is passed.
     assert "Unsubscribe" not in render_html(brief)
     assert "unsubscribe" not in render_text(brief).lower()
-    print("  ✓ render shows a visible Unsubscribe link only when a target is set")
+    print("  ✓ render shows a visible Unsubscribe button only when a target is set")
 
 
 def test_gmail_login_failure_marks_all_failed():
@@ -465,7 +523,9 @@ def main():
         test_render_html_and_text,
         test_render_preserves_newlines,
         test_gmail_send_per_recipient,
+        test_one_click_headers_reach_the_wire,
         test_unsubscribe_header_helper,
+        test_unsubscribe_one_click_only_for_https,
         test_unsubscribe_link_and_header_agree,
         test_render_shows_unsubscribe_link_when_provided,
         test_gmail_login_failure_marks_all_failed,

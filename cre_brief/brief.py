@@ -90,6 +90,7 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
         print(f"DRY RUN — would send: {brief.subject}")
         print(f"Delivery method: {config.delivery_method or '(none configured)'}")
         print(f"Unsubscribe link: {unsubscribe_link or '(none — set REPLY_TO or LIST_UNSUBSCRIBE)'}")
+        print(f"One-click (RFC 8058): {'yes' if config.unsubscribe_post_header() else 'no — needs an https LIST_UNSUBSCRIBE endpoint'}")
         if config.recipients:
             print(f"Recipients: {', '.join(config.recipients)}")
         else:
@@ -114,6 +115,7 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
 
     method = config.delivery_method
     unsubscribe = config.unsubscribe_header()
+    unsubscribe_post = config.unsubscribe_post_header()
     log.info("Sending via %s to %d recipient(s)", method, len(config.recipients))
     if method == "gmail":
         result = send_via_gmail(
@@ -126,6 +128,7 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
             text=text,
             reply_to=config.reply_to,
             unsubscribe=unsubscribe,
+            unsubscribe_post=unsubscribe_post,
         )
     else:
         result = send_via_resend(
@@ -137,6 +140,7 @@ def run(send: bool = True, out_dir: Optional[str] = "out", print_html: bool = Fa
             text=text,
             reply_to=config.reply_to,
             unsubscribe=unsubscribe,
+            unsubscribe_post=unsubscribe_post,
         )
     if not result.sent:
         log.error("No emails were delivered")
