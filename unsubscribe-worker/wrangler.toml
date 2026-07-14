@@ -1,0 +1,11 @@
+# Cloudflare Worker config for the one-click unsubscribe endpoint.
+# Deploy steps are in README.md next to this file.
+name = "cre-brief-unsubscribe"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+
+# Create the namespace first, then paste its id here:
+#   npx wrangler kv namespace create UNSUBS
+[[kv_namespaces]]
+binding = "UNSUBS"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

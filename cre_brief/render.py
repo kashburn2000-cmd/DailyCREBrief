@@ -111,20 +111,27 @@ def _headlines_html(brief: Brief) -> str:
 
 
 def _unsubscribe_html(unsubscribe_link: Optional[str]) -> str:
-    """A footer 'Unsubscribe' line for the body, or '' when no target is set.
+    """A footer 'Unsubscribe' button for the body, or '' when no target is set.
 
-    A visible unsubscribe link (alongside the List-Unsubscribe header) is one
-    of the strongest signals a mailbox provider uses to trust a bulk sender, so
-    it directly helps inbox placement.
+    A visible, obvious unsubscribe path (alongside the List-Unsubscribe
+    headers) is one of the strongest signals a mailbox provider uses to trust
+    a bulk sender, so it directly helps inbox placement. A table-based button
+    (not a bare <a>) renders reliably across Gmail, Outlook and Apple Mail and
+    is easy to tap on mobile — an unsubscribe nobody can find doesn't count.
     """
     if not unsubscribe_link:
         return ""
     href = _esc(unsubscribe_link)
-    return (
-        f'<br>You’re receiving this because your address was added to the '
-        f'CRE Finance Brief list. '
-        f'<a href="{href}" style="color:{_MUTED};text-decoration:underline;">Unsubscribe</a>.'
-    )
+    return f"""
+          <br>You’re receiving this because your address was added to the
+          CRE Finance Brief list.
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:10px 0 0 0;">
+            <tr><td style="border:1px solid {_RULE};border-radius:6px;background:{_BG};">
+              <a href="{href}"
+                 style="display:inline-block;padding:8px 20px;font-family:{_FONT};font-size:12px;
+                        font-weight:600;color:{_MUTED};text-decoration:none;">Unsubscribe</a>
+            </td></tr>
+          </table>"""
 
 
 def render_html(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:

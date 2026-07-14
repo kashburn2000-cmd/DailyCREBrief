@@ -20,7 +20,7 @@ Each edition has a fixed structure a reader can skim in 60 seconds:
   deliberately de-prioritized.
 * **One to Watch** — a single forward-looking line.
 * **Footer** — data sources, timestamp, a "not investment advice" disclaimer, and
-  a one-click **Unsubscribe** link.
+  a visible **Unsubscribe** button.
 
 <sub>Rendered HTML preview: run a dry run (below) and open `out/brief.rendered.html`.</sub>
 
@@ -212,15 +212,19 @@ redeploy needed. Each recipient gets their own copy (addresses are not shared
 between recipients).
 
 ### Unsubscribes
-Every email carries a visible **Unsubscribe** link in the footer *and* a
+Every email carries a visible **Unsubscribe button** in the footer *and* a
 `List-Unsubscribe` header, both pointing at the address in `LIST_UNSUBSCRIBE`
 (falls back to `REPLY_TO`, then your `GMAIL_ADDRESS`). With the default
 `mailto:` target, clicking Unsubscribe opens a pre-filled email **from the
 recipient's own address** to your inbox — so you always know exactly who asked
 to leave. To honor it, delete that address from the `RECIPIENTS` secret (Settings
 → Secrets and variables → Actions). No server or database is involved, which
-keeps the project at $0. Prefer a hosted form instead of email? Set
-`LIST_UNSUBSCRIBE` to an https URL and the link points there.
+keeps the project at $0.
+
+Want unsubscribes honored automatically, with no inbox monitoring or secret
+editing? Deploy the included worker — see
+[**True one-click unsubscribe**](#true-one-click-unsubscribe-included--strongest-sender-side-lever)
+below and [`unsubscribe-worker/README.md`](unsubscribe-worker/README.md).
 
 ### Feeds
 Edit the `FEEDS` list at the top of **`cre_brief/feeds.py`**. Each entry is just
@@ -262,7 +266,8 @@ aren't missed.
 
 Every message is also sent with the headers filters expect from legitimate mail:
 a plaintext **and** HTML part (`multipart/alternative`), `Reply-To`,
-`List-Unsubscribe` **plus a visible unsubscribe link**, `Date`, and a
+`List-Unsubscribe` (with RFC 8058 one-click when the target is an https URL)
+**plus a visible unsubscribe button**, `Date`, and a
 domain-aligned `Message-ID` — and each recipient gets their **own** copy (no
 `Bcc:` blast, which is itself a spam pattern). That covers the message-level
 basics; the rest is reputation and engagement:
@@ -279,10 +284,11 @@ engage. To accelerate it:
    * Start with `p=none` (monitor only). Wait a few minutes, then check it at
      a tool like https://dmarc.postmarkapp.com or mxtoolbox.com.
 2. **Set `REPLY_TO`** to a real inbox you read (e.g. your Gmail). The code then
-   adds `Reply-To`, a `List-Unsubscribe` header, **and a visible Unsubscribe link
-   in the footer** — a real, working unsubscribe path is one of the strongest
-   trust signals a filter looks for, and it satisfies Gmail/Yahoo's bulk-sender
-   rules. (Set `LIST_UNSUBSCRIBE` to a different address/URL to override.)
+   adds `Reply-To`, a `List-Unsubscribe` header, **and a visible Unsubscribe
+   button in the footer** — a real, working unsubscribe path is one of the
+   strongest trust signals a filter looks for, and it satisfies Gmail/Yahoo's
+   bulk-sender rules. (Set `LIST_UNSUBSCRIBE` to a different address/URL to
+   override; an https URL upgrades it to RFC 8058 one-click.)
 3. **Have recipients mark it "Not junk"** once and, in Gmail, add the sender to
    their Contacts. A reply from them is the strongest possible signal.
 4. **Send consistently** (the weekday schedule does this) and keep the list to
@@ -319,14 +325,36 @@ reinforces that — so it may start in Other/Promotions until either you safelis
 it (above) or a few editions of engagement train the classifier. Authentication
 gets you *into the mailbox*; engagement decides *which tab*.
 
-### Want a true one-click unsubscribe later?
+### True one-click unsubscribe (included — strongest sender-side lever)
 
-The current unsubscribe is a `mailto:` (you remove the address from `RECIPIENTS`).
-The strongest remaining *technical* lever is an **RFC 8058 one-click** unsubscribe
-— a header (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`) plus an HTTPS
-endpoint the mailbox provider can POST to. It needs a small free serverless
-function (e.g. a Cloudflare Worker) to auto-remove the address. If you ever want
-it, set `LIST_UNSUBSCRIBE` to that endpoint's URL and it slots straight in.
+The default unsubscribe is a `mailto:` (you remove the address from `RECIPIENTS`
+by hand). The strongest remaining *technical* lever is an **RFC 8058 one-click**
+unsubscribe — the `List-Unsubscribe-Post: List-Unsubscribe=One-Click` header
+plus an HTTPS endpoint the mailbox provider can POST to. It's the header
+Gmail/Outlook key their own top-of-message Unsubscribe affordance on, part of
+Gmail/Yahoo's bulk-sender requirements, and the closest thing to a
+sender-controllable focused-inbox signal.
+
+**This repo ships the endpoint**: a free Cloudflare Worker in
+[`unsubscribe-worker/`](unsubscribe-worker/README.md) (deploys in ~5 minutes).
+Once deployed, set three secrets and everything activates automatically:
+
+* `LIST_UNSUBSCRIBE` → `https://<your-worker>.workers.dev/?email={email}` —
+  the `{email}` placeholder becomes each recipient's address at send time, so
+  a one-click POST identifies exactly who unsubscribed. Both one-click headers
+  are then emitted on every send (an https URL is what enables them; a
+  `mailto:` target never advertises one-click — providers would POST to
+  nowhere).
+* `UNSUBSCRIBE_FEED_URL` + `UNSUBSCRIBE_FEED_SECRET` → the worker's `/list`
+  endpoint and its Bearer secret. Every send then fetches the unsubscribed
+  list first and **drops those recipients automatically** — no manual
+  `RECIPIENTS` editing, and unsubscribes are honored by the very next edition.
+  If the feed is unreachable the send aborts rather than risk mailing someone
+  who already left.
+
+The footer's visible **Unsubscribe** button points at the same per-recipient
+URL: humans get a confirmation page (nothing unsubscribes on a bare GET, so
+corporate link-scanners can't unsubscribe people by prefetching links).
 
 ---
 
