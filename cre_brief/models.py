@@ -71,7 +71,7 @@ class Synthesis:
 
     tape_context: str = ""
     fed_watch: str = ""
-    cmbs_watch: str = ""
+    lending_watch: str = ""    # construction/development debt-capital synthesis
     headlines: List[Headline] = field(default_factory=list)
     one_to_watch: str = ""
 
@@ -89,3 +89,6 @@ class Brief:
     generated_at_utc: str          # ISO-ish timestamp string for the footer
     model_name: str                # Gemini model used (for the footer)
     item_count: int = 0            # number of news items considered
+    # Monthly development-pipeline series (multifamily starts/permits). Kept
+    # separate from the daily Tape so the renderer can label them as monthly.
+    pulse: List[TapeRow] = field(default_factory=list)

@@ -137,20 +137,35 @@ def _fmt_change(change_pp: Optional[float]) -> Tuple[Optional[float], str]:
 
 
 # Series fetched from FRED. Editing this list changes what The Tape covers.
+# Ordered for a construction lender: the floating-rate indices construction
+# loans price over (SOFR, 30-day average SOFR) up top with the curve points
+# that drive perm/agency exit pricing (5Y/10Y) right behind them.
 TREASURY_AND_RATE_SERIES = [
+    ("SOFR", "SOFR"),
+    ("SOFR30DAYAVG", "30-Day Avg SOFR"),
     ("DGS10", "10Y Treasury"),
+    ("DGS5", "5Y Treasury"),
     ("DGS2", "2Y Treasury"),
     ("DGS30", "30Y Treasury"),
     ("DGS3MO", "3M Treasury"),
-    ("SOFR", "SOFR"),
 ]
 SPREAD_SERIES = ("T10Y2Y", "2s/10s Spread")
 FED_TARGET_UPPER = "DFEDTARU"
 FED_TARGET_LOWER = "DFEDTARL"
 
+# Monthly Census/HUD series for the multifamily development pipeline
+# ("Development Pulse"). Values are thousands of units, SAAR; the delta shown
+# is month-over-month. Monthly data only changes ~once a month — the point is
+# having the latest print and its direction at hand, not a daily move.
+PULSE_SERIES = [
+    ("HOUST5F", "MF Starts (5+ units)"),
+    ("PERMIT5", "MF Permits (5+ units)"),
+]
+
 ALL_FRED_SERIES = (
     [s for s, _ in TREASURY_AND_RATE_SERIES]
     + [SPREAD_SERIES[0], FED_TARGET_UPPER, FED_TARGET_LOWER]
+    + [s for s, _ in PULSE_SERIES]
 )
 
 
@@ -235,6 +250,63 @@ def build_tape(client: FredClient) -> Tuple[List[TapeRow], List[str]]:
         used.append(FED_TARGET_LOWER)
 
     return rows, used
+
+
+def _fmt_units(value: Optional[float]) -> str:
+    """Format a thousands-of-units SAAR level, e.g. 379.0 -> '379k SAAR'."""
+    return f"{value:,.0f}k SAAR" if value is not None else "n/a"
+
+
+def _fmt_pct_change(latest: Optional[float], prior: Optional[float]) -> Tuple[Optional[float], str]:
+    """Return (percent_change, display) month-over-month, e.g. '+5.3% m/m'."""
+    if latest is None or prior is None or prior == 0:
+        return None, "n/a"
+    pct = (latest - prior) / prior * 100.0
+    if round(pct, 1) == 0:
+        return 0.0, "flat"
+    sign = "+" if pct > 0 else "-"
+    return pct, f"{sign}{abs(pct):.1f}% m/m"
+
+
+def build_pulse(client: FredClient) -> Tuple[List[TapeRow], List[str]]:
+    """Fetch the monthly development-pipeline series (Development Pulse).
+
+    Same shape as :func:`build_tape` — ``(rows, series_used)`` — but levels are
+    thousands of units (SAAR) and the delta is month-over-month percent. The
+    percent change is stored in ``change_bps`` purely so the renderer can colour
+    the direction; it is never treated as basis points.
+    """
+    rows: List[TapeRow] = []
+    used: List[str] = []
+    for series_id, label in PULSE_SERIES:
+        point = client.fetch_point(series_id)
+        change_pct, change_display = _fmt_pct_change(point.latest, point.prior)
+        rows.append(
+            TapeRow(
+                key=series_id,
+                label=label,
+                level=point.latest,
+                level_display=_fmt_units(point.latest),
+                change_bps=change_pct,
+                change_display=change_display,
+                as_of=point.latest_date,
+                prior_as_of=point.prior_date,
+            )
+        )
+        if point.ok:
+            used.append(series_id)
+    return rows, used
+
+
+def pulse_facts_for_prompt(rows: List[TapeRow]) -> str:
+    """Render the monthly pipeline series as ground-truth facts for the LLM."""
+    lines = []
+    for r in rows:
+        as_of = f" (monthly print as of {r.as_of})" if r.as_of else ""
+        lines.append(
+            f"- {r.label}: {r.level_display}, month-over-month {r.change_display}{as_of}"
+        )
+    return "\n".join(lines)
 
 
 def tape_facts_for_prompt(rows: List[TapeRow]) -> str:

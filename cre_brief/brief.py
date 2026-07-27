@@ -14,7 +14,7 @@ import requests
 
 from .config import Config
 from .feeds import collect_items, items_for_prompt
-from .fred import FredClient, build_tape, tape_facts_for_prompt
+from .fred import FredClient, build_pulse, build_tape, pulse_facts_for_prompt, tape_facts_for_prompt
 from .gemini import GeminiClient
 from .mailer import send_via_gmail, send_via_resend
 from .models import Brief
@@ -33,14 +33,19 @@ def build_brief(config: Config, session: Optional[requests.Session] = None) -> B
     subject = f"CRE Finance Brief — {date_str}"
     log.info("Building '%s'", subject)
 
-    # 1. The Tape — ground-truth rate numbers from FRED, formatted in code.
+    # 1. The Tape — ground-truth rate numbers from FRED, formatted in code —
+    #    plus the monthly Development Pulse (multifamily starts/permits).
     fred = FredClient(config.fred_api_key, session=session)
     tape, series_used = build_tape(fred)
     tape_facts = tape_facts_for_prompt(tape)
+    pulse, pulse_used = build_pulse(fred)
+    pulse_facts = pulse_facts_for_prompt(pulse)
+    series_used = series_used + pulse_used
     log.info("The Tape built from %d FRED series", len(series_used))
 
     # 2. News — fetch, validate, window, dedupe, then rank by what the reader
-    #    cares about (Fed/rates/industry first; single-property deals last).
+    #    cares about (rates and construction/multifamily first; other sectors'
+    #    single-property deals last).
     items, sources_used = collect_items(
         window_hours=config.news_window_hours, session=session
     )
@@ -49,7 +54,7 @@ def build_brief(config: Config, session: Optional[requests.Session] = None) -> B
 
     # 3. Prose — Gemini synthesizes ONLY from the supplied facts + items.
     gemini = GeminiClient(config.gemini_api_key, model=config.gemini_model, session=session)
-    synthesis = synthesize(gemini, tape, items, tape_facts, items_block)
+    synthesis = synthesize(gemini, tape, items, tape_facts, items_block, pulse_facts=pulse_facts)
 
     # 4. Assemble.
     return Brief(
@@ -62,6 +67,7 @@ def build_brief(config: Config, session: Optional[requests.Session] = None) -> B
         generated_at_utc=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         model_name=config.gemini_model,
         item_count=len(items),
+        pulse=pulse,
     )
 
 

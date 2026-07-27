@@ -63,6 +63,12 @@ class Feed:
 #  finder. See the README section "Editing the feeds".
 # ===========================================================================
 FEEDS: List[Feed] = [
+    # Multifamily development & construction — the reader's day job (added
+    # 2026-07; verify each in your next run's log or `python -m cre_brief.feeds`):
+    Feed("Multifamily Dive", "https://www.multifamilydive.com/feeds/news/"),        # MF development, finance, operations
+    Feed("Construction Dive", "https://www.constructiondive.com/feeds/news/"),      # construction costs, labor, materials
+    Feed("Multi-Housing News", "https://www.multihousingnews.com/feed/"),           # MF news incl. development & finance
+    Feed("NAHB Eye on Housing", "https://eyeonhousing.org/feed/"),                  # starts/permits/cost economics
     # Confirmed live on the first production run (2026-06-26):
     Feed("Wolf Street", "https://wolfstreet.com/feed/"),
     Feed("Commercial Observer", "https://commercialobserver.com/feed/"),

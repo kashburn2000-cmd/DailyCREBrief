@@ -1,8 +1,10 @@
 # CRE Finance Brief
 
-An automated **daily commercial-real-estate finance digest** (CRE / CMBS focus)
-that emails a small fixed list every weekday morning. It runs entirely on free
-infrastructure — **$0 to operate**: no server, no database, no paid APIs.
+An automated **daily digest for multifamily development finance** — written for
+a reader whose day job is **construction loans** on ground-up apartment
+projects — that emails a small fixed list every weekday morning. It runs
+entirely on free infrastructure — **$0 to operate**: no server, no database, no
+paid APIs.
 
 ```
 GitHub Actions (cron)  →  FRED (rates)  +  RSS (news)  →  Gemini (writing)  →  Gmail / Resend (email)
@@ -10,14 +12,20 @@ GitHub Actions (cron)  →  FRED (rates)  +  RSS (news)  →  Gemini (writing)  
 
 Each edition has a fixed structure a reader can skim in 60 seconds:
 
-* **The Tape** — a rate table (10Y, 2Y, 30Y, 3M, SOFR, 2s/10s spread, fed funds
-  target) with levels and day-over-day moves in basis points.
+* **The Tape** — a rate table (SOFR and 30-day average SOFR — the indices
+  construction loans float over — plus 10Y/5Y/2Y/30Y/3M Treasuries, 2s/10s
+  spread, fed funds target) with levels and day-over-day moves in basis points.
+* **Development Pulse** — the monthly multifamily pipeline prints: 5+ unit
+  housing starts and permits (Census/HUD via FRED) with month-over-month moves.
 * **Fed Watch** — the priority section: a fuller monetary-policy / rate-outlook
   synthesis from the day's feeds.
-* **CMBS Watch** — CMBS / CRE-credit / delinquency / distress synthesis.
-* **Industry Headlines** — 3–6 bullets on industry, rate and policy trends, each
-  with a one-line takeaway + source link. Individual property deals are
-  deliberately de-prioritized.
+* **Lending Watch** — construction/development debt capital: construction
+  lending activity and appetite, bank standards, debt funds, HUD/FHA programs,
+  and construction costs where they affect loan budgets.
+* **Multifamily & Construction Headlines** — 3–6 bullets on development, supply,
+  cost and financing trends, each with a one-line takeaway + source link.
+  Other asset classes and single-property deals are deliberately de-prioritized
+  (a construction-loan closing is the exception — it signals lender appetite).
 * **One to Watch** — a single forward-looking line.
 * **Footer** — data sources, timestamp, a "not investment advice" disclaimer, and
   a visible **Unsubscribe** button.
@@ -234,7 +242,10 @@ it just won't contribute that day.
 
 Confirmed working as of the first production run: **Wolf Street, Commercial
 Observer, Connect CRE, Trepp TreppTalk**, plus added **Federal Reserve** (press
-releases) and **CRE Direct / crenews.com** (CMBS). Parked with no working feed:
+releases) and **CRE Direct / crenews.com** (CMBS). Added 2026-07 for the
+multifamily-construction focus (confirm in your next run's log or
+`python -m cre_brief.feeds`): **Multifamily Dive, Construction Dive,
+Multi-Housing News, NAHB Eye on Housing**. Parked with no working feed:
 GlobeSt (feeds sit behind `globest.com/rss/`), CRE Daily (newsletter, empty
 feed), Bisnow and MBA (no native RSS) — see the commented lines in `feeds.py`.
 
@@ -365,7 +376,7 @@ Everything sits inside free tiers for a small daily newsletter:
 | Component       | Free tier                                  | This project's usage        |
 | --------------- | ------------------------------------------ | --------------------------- |
 | GitHub Actions  | generous free minutes for public repos     | ~1–2 min/day                |
-| FRED            | free, unlimited for this volume            | ~8 requests/day             |
+| FRED            | free, unlimited for this volume            | ~12 requests/day            |
 | Gemini (Flash)  | free tier, no billing                      | 1 request/day               |
 | Gmail (SMTP)    | free, ~500 recipients/day                  | (#recipients)/day           |
 | Resend (alt.)   | 100 emails/day, 3,000/month                | (#recipients)/day           |
