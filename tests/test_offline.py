@@ -71,10 +71,12 @@ class FakeSession:
 def test_tape_formatting_and_bps():
     points = {
         "DGS10": SeriesPoint("DGS10", latest=4.28, latest_date="2026-06-25", prior=4.25, prior_date="2026-06-24"),
+        "DGS5": SeriesPoint("DGS5", latest=4.05, latest_date="2026-06-25", prior=4.02, prior_date="2026-06-24"),
         "DGS2": SeriesPoint("DGS2", latest=3.80, latest_date="2026-06-25", prior=3.85, prior_date="2026-06-24"),
         "DGS30": SeriesPoint("DGS30", latest=4.90, latest_date="2026-06-25", prior=4.90, prior_date="2026-06-24"),
         "DGS3MO": SeriesPoint("DGS3MO", latest=4.31, latest_date="2026-06-25", prior=4.30, prior_date="2026-06-24"),
         "SOFR": SeriesPoint("SOFR", latest=4.32, latest_date="2026-06-25", prior=4.33, prior_date="2026-06-24"),
+        "SOFR30DAYAVG": SeriesPoint("SOFR30DAYAVG", latest=4.35, latest_date="2026-06-25", prior=4.35, prior_date="2026-06-24"),
         "T10Y2Y": SeriesPoint("T10Y2Y", latest=0.48, latest_date="2026-06-25", prior=0.40, prior_date="2026-06-24"),
         "DFEDTARU": SeriesPoint("DFEDTARU", latest=4.50, latest_date="2026-06-25", prior=4.50, prior_date="2026-06-24"),
         "DFEDTARL": SeriesPoint("DFEDTARL", latest=4.25, latest_date="2026-06-25", prior=4.25, prior_date="2026-06-24"),
@@ -85,19 +87,49 @@ def test_tape_formatting_and_bps():
     assert rows["10Y Treasury"].level_display == "4.28%"
     assert rows["10Y Treasury"].change_display == "+3 bps"     # 4.28 - 4.25 = +3bps
     assert rows["10Y Treasury"].direction == "up"
+    assert rows["5Y Treasury"].level_display == "4.05%"
+    assert rows["5Y Treasury"].change_display == "+3 bps"
     assert rows["2Y Treasury"].change_display == "-5 bps"
     assert rows["2Y Treasury"].direction == "down"
     assert rows["30Y Treasury"].change_display == "flat"       # unchanged
     assert rows["SOFR"].change_display == "-1 bps"
+    assert rows["30-Day Avg SOFR"].level_display == "4.35%"
+    assert rows["30-Day Avg SOFR"].change_display == "flat"
     assert rows["2s/10s Spread"].level_display == "+48 bps"     # 0.48 -> 48 bps
     assert rows["2s/10s Spread"].change_display == "+8 bps"     # 0.48 - 0.40
     assert rows["Fed Funds Target"].level_display == "4.25–4.50%"
     assert rows["Fed Funds Target"].change_display == "flat"
-    assert "DGS10" in used and "DFEDTARU" in used
+    assert "DGS10" in used and "DFEDTARU" in used and "SOFR30DAYAVG" in used
+    # Floating-rate indices lead the table for a construction-loan reader.
+    assert tape[0].label == "SOFR" and tape[1].label == "30-Day Avg SOFR"
 
     facts = tape_facts_for_prompt(tape)
     assert "10Y Treasury: 4.28%, day-over-day +3 bps" in facts
     print("  ✓ tape formatting & bps math")
+
+
+def test_pulse_formatting_and_mm():
+    from cre_brief.fred import build_pulse, pulse_facts_for_prompt
+    points = {
+        "HOUST5F": SeriesPoint("HOUST5F", latest=379.0, latest_date="2026-06-01", prior=360.0, prior_date="2026-05-01"),
+        "PERMIT5": SeriesPoint("PERMIT5", latest=412.0, latest_date="2026-06-01", prior=430.0, prior_date="2026-05-01"),
+    }
+    pulse, used = build_pulse(FakeFred(points))
+    rows = {r.label: r for r in pulse}
+    assert rows["MF Starts (5+ units)"].level_display == "379k SAAR"
+    assert rows["MF Starts (5+ units)"].change_display == "+5.3% m/m"   # 379/360 - 1
+    assert rows["MF Permits (5+ units)"].level_display == "412k SAAR"
+    assert rows["MF Permits (5+ units)"].change_display == "-4.2% m/m"  # 412/430 - 1
+    assert used == ["HOUST5F", "PERMIT5"]
+
+    facts = pulse_facts_for_prompt(pulse)
+    assert "MF Starts (5+ units): 379k SAAR, month-over-month +5.3% m/m" in facts
+
+    # Missing series degrade to n/a without crashing.
+    empty_pulse, empty_used = build_pulse(FakeFred({}))
+    assert empty_used == []
+    assert all(r.level_display == "n/a" and r.change_display == "n/a" for r in empty_pulse)
+    print("  ✓ development pulse formats units + m/m percent, degrades to n/a")
 
 
 def test_missing_series_is_graceful():
@@ -129,7 +161,7 @@ def test_synthesize_maps_indices_and_drops_hallucinations():
     payload = {
         "tape_context": "Yields drifted modestly higher.",
         "fed_watch": "The FOMC held its target range steady.",
-        "cmbs_watch": "Trepp flagged rising office delinquencies.",
+        "lending_watch": "Trepp flagged rising office delinquencies.",
         "headlines": [
             {"item_index": 1, "takeaway": "Office distress is pushing CMBS delinquencies up."},
             {"item_index": 2, "takeaway": "A large office refinancing closed."},
@@ -159,7 +191,7 @@ def test_synthesize_maps_indices_and_drops_hallucinations():
 def test_headlines_backfill_only_when_material_exists():
     # Model selects nothing valid; backfill pulls the 3 freshest real items.
     items = _sample_items()
-    payload = {"tape_context": "", "fed_watch": "", "cmbs_watch": "",
+    payload = {"tape_context": "", "fed_watch": "", "lending_watch": "",
                "headlines": [{"item_index": 50, "takeaway": "nope"}], "one_to_watch": ""}
     synth = synthesize(FakeGemini(payload), [], items, "facts", "items")
     assert len(synth.headlines) == 3
@@ -419,7 +451,7 @@ def test_render_shows_unsubscribe_link_when_provided():
     points = {"DGS10": SeriesPoint("DGS10", latest=4.28, latest_date="2026-06-25",
                                    prior=4.25, prior_date="2026-06-24")}
     tape, used = build_tape(FakeFred(points))
-    synth = Synthesis(tape_context="", fed_watch="", cmbs_watch="", headlines=[], one_to_watch="")
+    synth = Synthesis(tape_context="", fed_watch="", lending_watch="", headlines=[], one_to_watch="")
     brief = Brief(
         date_str="Friday, June 26, 2026", subject="CRE Finance Brief",
         tape=tape, synthesis=synth, sources_used=["Wolf Street"], fred_series_used=used,
@@ -530,6 +562,32 @@ def test_prioritize_items_ranks_fed_and_industry_over_deals():
     print("  ✓ prioritize_items ranks Fed/industry above single-property deals")
 
 
+def test_prioritize_items_favors_multifamily_construction():
+    from cre_brief.synthesize import prioritize_items
+    items = [
+        FeedItem(index=0, title="Office landlord sells Chicago tower", source="A", link="o1",
+                 summary="single-asset office sale"),
+        FeedItem(index=1, title="Multifamily starts fall as permits slip", source="B", link="m1",
+                 summary="apartment construction pipeline slows"),
+        FeedItem(index=2, title="Bank of X closes $85M construction loan for apartment project",
+                 source="C", link="c1", summary="ground-up multifamily construction financing"),
+        FeedItem(index=3, title="Lumber tariffs push construction costs higher", source="D", link="t1",
+                 summary="materials inflation squeezes builders"),
+        FeedItem(index=4, title="Data center REIT buys Virginia campus", source="E", link="d1",
+                 summary="acquisition of a data center"),
+    ]
+    ordered = prioritize_items(items)
+    titles = [it.title for it in ordered]
+    # Multifamily/construction stories occupy the top; the construction-loan
+    # closing is NOT penalized as a single-property deal.
+    assert all(any(word in t for word in ("Multifamily", "construction", "tariffs")) for t in titles[:3])
+    assert "construction loan" in " ".join(titles[:3])
+    # Other-sector single-asset stories sink to the bottom.
+    assert titles[-1] in ("Office landlord sells Chicago tower", "Data center REIT buys Virginia campus")
+    assert titles[-2] in ("Office landlord sells Chicago tower", "Data center REIT buys Virginia campus")
+    print("  ✓ prioritize_items favors multifamily/construction; loan closings not penalized")
+
+
 def test_synthesize_degrades_on_gemini_error():
     class Boom:
         def generate_json(self, *a, **k):
@@ -548,26 +606,53 @@ def test_render_html_and_text():
     synth = Synthesis(
         tape_context="Yields edged higher.",
         fed_watch="FOMC steady.",
-        cmbs_watch="No fresh CMBS items.",
+        lending_watch="Construction lending steady.",
         headlines=[],
         one_to_watch="Watch CPI.",
     )
+    from cre_brief.fred import build_pulse
+    pulse, _pulse_used = build_pulse(FakeFred({
+        "HOUST5F": SeriesPoint("HOUST5F", latest=379.0, latest_date="2026-06-01",
+                               prior=360.0, prior_date="2026-05-01"),
+        "PERMIT5": SeriesPoint("PERMIT5", latest=412.0, latest_date="2026-06-01",
+                               prior=430.0, prior_date="2026-05-01"),
+    }))
     brief = Brief(
         date_str="Friday, June 26, 2026",
         subject="CRE Finance Brief — Friday, June 26, 2026",
         tape=tape, synthesis=synth, sources_used=["Wolf Street"], fred_series_used=used,
         generated_at_utc="2026-06-26 11:00 UTC", model_name="gemini-3.5-flash", item_count=3,
+        pulse=pulse,
     )
     html = render_html(brief)
     text = render_text(brief)
     assert "CRE Finance Brief" in html and "The Tape" in html
     assert "4.28%" in html and "+3 bps" in html
+    assert "Multifamily construction finance" in html
+    assert "Lending Watch" in html and "Construction lending steady." in html
+    assert "Multifamily &amp; Construction Headlines" in html
+    # Development Pulse table renders the monthly prints with the month note.
+    assert "Development Pulse" in html
+    assert "379k SAAR" in html and "+5.3% m/m" in html
+    assert "June 2026" in html
     assert "not investment" in html.lower()
     assert "THE TAPE" in text and "4.28%" in text
+    assert "DEVELOPMENT PULSE" in text and "412k SAAR" in text
+    assert "LENDING WATCH" in text
     assert "gemini-3.5-flash" in html
     # No unrendered template artifacts.
     assert "{" not in html.split("<body")[1][:50]
-    print("  ✓ html & text render with real numbers and disclaimer")
+
+    # A brief with no pulse data simply omits the section.
+    brief_no_pulse = Brief(
+        date_str="Friday, June 26, 2026", subject="CRE Finance Brief",
+        tape=tape, synthesis=synth, sources_used=[], fred_series_used=used,
+        generated_at_utc="2026-06-26 11:00 UTC", model_name="gemini-3.5-flash",
+    )
+    html_no_pulse = render_html(brief_no_pulse)
+    assert "379k SAAR" not in html_no_pulse and "Δ m/m" not in html_no_pulse
+    assert "DEVELOPMENT PULSE" not in render_text(brief_no_pulse)
+    print("  ✓ html & text render with real numbers, pulse table and disclaimer")
 
 
 def test_gemini_backoff_then_success():
@@ -601,10 +686,12 @@ def test_gemini_fails_fast_on_400():
 def main():
     tests = [
         test_tape_formatting_and_bps,
+        test_pulse_formatting_and_mm,
         test_missing_series_is_graceful,
         test_synthesize_maps_indices_and_drops_hallucinations,
         test_headlines_backfill_only_when_material_exists,
         test_prioritize_items_ranks_fed_and_industry_over_deals,
+        test_prioritize_items_favors_multifamily_construction,
         test_synthesize_degrades_on_gemini_error,
         test_gemini_non_json_200_degrades,
         test_fed_funds_single_bound,

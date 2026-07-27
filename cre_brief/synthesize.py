@@ -26,38 +26,77 @@ log = logging.getLogger("cre_brief.synthesize")
 MAX_HEADLINES = 6
 MIN_HEADLINES = 3  # spec target is 3-6 bullets; backfill toward 3 when material exists
 
-# --- Editorial priority: Fed/rates first, industry next, single deals last ----
-# Keyword buckets used to rank items before they reach the model and the backfill.
+# --- Editorial priority for a multifamily construction lender -----------------
+# Rates/Fed and construction-debt capital first, multifamily development and
+# construction-cost trends next, everything else (other asset classes, single
+# deals, personnel) last. Keyword buckets rank items before they reach the
+# model and the backfill.
 _FED_RATE_KW = (
     "fed", "fomc", "powell", "central bank", "monetary", "rate cut", "rate hike",
     "interest rate", "rates", "yield", "treasury", "inflation", "cpi", "pce",
     "basis point", " bps", "sofr", "fed funds", "rate-cut", "rate-hike", "tightening",
     "easing", "dot plot", "jobs report", "payroll", "gdp", "recession", "soft landing",
 )
+# Construction & development: activity, costs, and the programs that fund it.
+_CONSTRUCTION_KW = (
+    "construction", "development", "developer", "housing starts", "starts",
+    "permits", "ground-up", "groundbreak", "breaks ground", "pipeline",
+    "deliveries", "completions", "supply", "lumber", "steel", "cement", "tariff",
+    "materials", "labor shortage", "subcontractor", "contractor", "builder",
+    "hud", "fha", "221(d)", "lihtc", "tax credit", "affordable housing",
+    "build-to-rent", "built-to-rent", "insurance cost",
+)
+# Multifamily fundamentals that drive underwriting and the exit.
+_MULTIFAMILY_KW = (
+    "multifamily", "apartment", "rent growth", "rents", "absorption", "lease-up",
+    "occupancy", "vacancy", "student housing", "renter", "household formation",
+)
+# Broad CRE-credit/capital-markets context — still useful, lower priority.
 _INDUSTRY_KW = (
     "cmbs", "delinquenc", "distress", "default", "credit", "lending", "loan",
     "debt", "maturity wall", "refinanc", "spread", "bank", "regulat", "cap rate",
-    "valuation", "occupancy", "vacancy", "capital markets", "issuance", "originations",
-    "fund", "office", "multifamily", "industrial", "retail sector", "data center",
+    "valuation", "capital markets", "issuance", "originations", "debt fund",
+)
+# Construction-financing signals: a construction-loan closing is NOT noise to
+# this reader — it shows which lenders are active and on what terms.
+_CONSTRUCTION_FIN_KW = (
+    "construction loan", "construction financing", "construction debt",
+    "construction lending", "construction facility", "land loan",
 )
 # Single-property / personnel transactions the reader does NOT want.
 _DEAL_KW = (
     "acquire", "acquisition", "sells", " sold ", "buys", "purchase", "snaps up",
-    "signs lease", "leases ", "inks", "joint venture", " jv ", "breaks ground",
-    "tops out", "groundbreak", "names ", "hires", "appoints", "promotes", "taps ",
+    "signs lease", "leases ", "inks", "joint venture", " jv ",
+    "tops out", "names ", "hires", "appoints", "promotes", "taps ",
+)
+# Other asset classes: only interesting with a multifamily/construction angle.
+_OTHER_SECTOR_KW = (
+    "office", "retail", "hotel", "hospitality", "data center", "self-storage",
+    "industrial", "seniors housing", "life science",
 )
 
 
 def _relevance_score(item: FeedItem) -> int:
-    """Higher = more aligned with what this reader cares about (Fed/rates/industry)."""
+    """Higher = more aligned with a multifamily construction-loan reader."""
     text = f" {item.title} {item.summary} ".lower()
     score = 0
+    construction = any(k in text for k in _CONSTRUCTION_KW)
+    multifamily = any(k in text for k in _MULTIFAMILY_KW)
     if any(k in text for k in _FED_RATE_KW):
         score += 3
+    if construction:
+        score += 3
+    if multifamily:
+        score += 3
     if any(k in text for k in _INDUSTRY_KW):
+        score += 1
+    if any(k in text for k in _CONSTRUCTION_FIN_KW):
+        # Lender-appetite signal; also cancels the single-deal penalty below.
         score += 2
-    if any(k in text for k in _DEAL_KW):
+    elif any(k in text for k in _DEAL_KW):
         score -= 2
+    if any(k in text for k in _OTHER_SECTOR_KW) and not (construction or multifamily):
+        score -= 1
     return score
 
 
@@ -65,7 +104,7 @@ def prioritize_items(items: List[FeedItem]) -> List[FeedItem]:
     """Reorder by editorial relevance (then recency) and reassign indices.
 
     Run before building the prompt so the model sees — and the backfill draws
-    from — the most rate/Fed/industry-relevant stories first.
+    from — the stories most relevant to a multifamily construction lender first.
     """
     def sort_key(it: FeedItem):
         ts = it.published.timestamp() if it.published else 0
@@ -82,7 +121,7 @@ SYNTHESIS_SCHEMA: Dict[str, Any] = {
     "properties": {
         "tape_context": {"type": "string"},
         "fed_watch": {"type": "string"},
-        "cmbs_watch": {"type": "string"},
+        "lending_watch": {"type": "string"},
         "headlines": {
             "type": "array",
             "items": {
@@ -96,47 +135,66 @@ SYNTHESIS_SCHEMA: Dict[str, Any] = {
         },
         "one_to_watch": {"type": "string"},
     },
-    "required": ["tape_context", "fed_watch", "cmbs_watch", "headlines", "one_to_watch"],
+    "required": ["tape_context", "fed_watch", "lending_watch", "headlines", "one_to_watch"],
     "propertyOrdering": [
         "tape_context",
         "fed_watch",
-        "cmbs_watch",
+        "lending_watch",
         "headlines",
         "one_to_watch",
     ],
 }
 
 SYSTEM_PROMPT = (
-    "You are the editor of the 'CRE Finance Brief', a daily commercial real "
-    "estate finance digest for finance professionals. The reader cares MOST about "
-    "the Fed, monetary policy, interest rates and the rate outlook; next about "
-    "broad industry and CRE-credit trends; and does NOT care about individual "
-    "property transactions. Write tight, factual, skimmable copy.\n\n"
+    "You are the editor of the 'CRE Finance Brief', a daily digest for a reader "
+    "who works in MULTIFAMILY DEVELOPMENT FINANCE — their entire job is "
+    "originating and managing CONSTRUCTION LOANS for ground-up apartment "
+    "projects. Rank everything by usefulness to that job:\n"
+    "  (1) The Fed, interest rates and the rate outlook — construction loans "
+    "float over SOFR and the exit/perm market prices off the curve.\n"
+    "  (2) Construction-debt capital: bank construction-lending appetite and "
+    "standards, debt funds, HUD/FHA multifamily programs, loan terms, leverage "
+    "and pricing trends. A construction-loan closing IS relevant — it signals "
+    "which lenders are active and on what terms.\n"
+    "  (3) Multifamily development conditions: housing starts, permits, supply "
+    "pipeline, deliveries, absorption, rent growth, and construction costs "
+    "(materials, tariffs, labor, insurance).\n"
+    "The reader does NOT care about other asset classes (office, retail, hotel, "
+    "data centers, industrial) or single-property sales, leases and personnel "
+    "moves, unless there is a clear multifamily or construction angle. Write "
+    "tight, factual, skimmable copy.\n\n"
     "ABSOLUTE RULES:\n"
     "1. Use ONLY the supplied rate facts and news items. Never invent figures, "
     "company names, deal sizes, people, dates or events.\n"
-    "2. The rate numbers in THE TAPE FACTS are ground truth. Do not restate, "
-    "recompute, round, or contradict them, and never introduce a rate number "
-    "that is not in those facts.\n"
+    "2. The numbers in THE TAPE FACTS and MONTHLY DEVELOPMENT DATA are ground "
+    "truth. Do not restate, recompute, round, or contradict them, and never "
+    "introduce a rate or data number that is not in those facts.\n"
     "3. If a section has no relevant supplied material, say so in one short, "
     "honest sentence (e.g. 'No fresh Fed-policy items in today's feeds.'). Do "
     "NOT pad or fabricate.\n"
-    "4. PRIORITIZE Fed / monetary-policy / rates / inflation and broad industry "
-    "trends. DE-PRIORITIZE single-property deals (one building being bought, "
-    "sold, leased, or refinanced) — skip them unless they signal a market-wide "
-    "trend.\n"
+    "4. PRIORITIZE the reader's ranking above. DE-PRIORITIZE single-property "
+    "deals — skip them unless they involve construction financing or signal a "
+    "market-wide trend.\n"
     "5. No hype, no advice, no price targets. Neutral, professional tone.\n"
     "6. Keep every section short — a reader skims the whole brief in 60 seconds."
 )
 
 
-def _build_user_prompt(tape_facts: str, items_block: str, has_items: bool) -> str:
+def _build_user_prompt(
+    tape_facts: str, items_block: str, has_items: bool, pulse_facts: str = ""
+) -> str:
     news_section = items_block if has_items else "(No news items were retrieved in the look-back window.)"
+    pulse_section = (
+        f"\n\nMONTHLY DEVELOPMENT DATA (ground truth — monthly prints, not daily moves):\n{pulse_facts}"
+        if pulse_facts
+        else ""
+    )
     return f"""THE TAPE FACTS (ground truth — never alter or restate as new numbers):
-{tape_facts}
+{tape_facts}{pulse_section}
 
 NEWS ITEMS (each prefixed with an [index]; already ordered with the most
-rate/Fed/industry-relevant first. Reference indices for headlines):
+relevant-to-a-multifamily-construction-lender first. Reference indices for
+headlines):
 {news_section}
 
 Produce a JSON object with these fields:
@@ -151,19 +209,25 @@ Produce a JSON object with these fields:
   strictly from the supplied items. If there is genuinely no such material, say
   so briefly.
 
-- "cmbs_watch": 1-3 sentences synthesizing ONLY CMBS, CRE-credit, delinquency,
-  maturity-wall, or distress items from the news above. If none, say so briefly.
+- "lending_watch": 2-4 sentences synthesizing ONLY construction/development
+  debt-capital material from the news above: construction lending activity and
+  appetite, bank lending standards, debt funds, HUD/FHA multifamily programs,
+  CRE-credit conditions that bear on development financing, and construction
+  costs where they affect loan budgets. If none, say so briefly.
 
 - "headlines": an array of 3 to 6 objects, each {{"item_index": <int>,
-  "takeaway": "<one-line, ~15-word takeaway>"}}. Choose the most relevant
-  INDUSTRY and RATE/POLICY items by their [index] — macro, lending, regulation,
-  sector and market trends. Do NOT pick single-property transactions unless they
-  illustrate a broader trend. Only use indices that appear above. If fewer than
-  3 qualifying items exist, return only those.
+  "takeaway": "<one-line, ~15-word takeaway>"}}. Choose the items most useful
+  to a multifamily construction lender by their [index] — rates/policy,
+  construction-debt capital, multifamily supply and fundamentals, construction
+  costs. A construction-loan closing qualifies (lender-appetite signal); other
+  single-property transactions do NOT unless they illustrate a broader trend.
+  Only use indices that appear above. If fewer than 3 qualifying items exist,
+  return only those.
 
 - "one_to_watch": ONE forward-looking sentence about what to watch next,
-  grounded in the supplied material (a data release, Fed event, or theme already
-  present above). No speculation beyond the material.
+  grounded in the supplied material and most consequential for multifamily
+  construction financing (a data release, Fed event, or theme already present
+  above). No speculation beyond the material.
 
 Return ONLY the JSON object."""
 
@@ -242,10 +306,11 @@ def synthesize(
     items: List[FeedItem],
     tape_facts: str,
     items_block: str,
+    pulse_facts: str = "",
 ) -> Synthesis:
     """Call Gemini and return a :class:`Synthesis`, degrading gracefully on failure."""
     items_by_index = {it.index: it for it in items}
-    prompt = _build_user_prompt(tape_facts, items_block, has_items=bool(items))
+    prompt = _build_user_prompt(tape_facts, items_block, has_items=bool(items), pulse_facts=pulse_facts)
 
     try:
         # Low temperature -> stable, focused selection (less run-to-run shuffling).
@@ -263,12 +328,12 @@ def synthesize(
     synthesis = Synthesis(
         tape_context=str(data.get("tape_context", "")).strip(),
         fed_watch=str(data.get("fed_watch", "")).strip(),
-        cmbs_watch=str(data.get("cmbs_watch", "")).strip(),
+        lending_watch=str(data.get("lending_watch", "")).strip(),
         headlines=headlines,
         one_to_watch=str(data.get("one_to_watch", "")).strip(),
     )
     log.info(
-        "Synthesis complete: %d headline(s), fed=%dch, cmbs=%dch",
-        len(synthesis.headlines), len(synthesis.fed_watch), len(synthesis.cmbs_watch),
+        "Synthesis complete: %d headline(s), fed=%dch, lending=%dch",
+        len(synthesis.headlines), len(synthesis.fed_watch), len(synthesis.lending_watch),
     )
     return synthesis

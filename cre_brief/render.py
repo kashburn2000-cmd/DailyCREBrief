@@ -12,6 +12,7 @@ Nothing here talks to an API or invents data; it only formats what it is given.
 from __future__ import annotations
 
 import html
+from datetime import datetime
 from typing import List, Optional
 
 from .models import Brief, TapeRow
@@ -49,13 +50,27 @@ def _change_color(row: TapeRow) -> str:
     return {"up": _UP, "down": _DOWN, "flat": _FLAT, "na": _MUTED}[row.direction]
 
 
+def _pulse_month(pulse: List[TapeRow]) -> str:
+    """Human month of the latest monthly print, e.g. 'June 2026' ('' if unknown)."""
+    for row in pulse:
+        if row.as_of:
+            try:
+                return datetime.strptime(row.as_of, "%Y-%m-%d").strftime("%B %Y")
+            except ValueError:
+                continue
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # HTML
 # ---------------------------------------------------------------------------
-def _tape_rows_html(tape: List[TapeRow]) -> str:
+def _tape_rows_html(tape: List[TapeRow], directional: bool = True) -> str:
     cells = []
     for row in tape:
-        color = _change_color(row)
+        # Directional colouring makes sense for rates (up = money costlier).
+        # For supply metrics (starts/permits) up/down has no such valence, so
+        # the Development Pulse renders its deltas in neutral ink.
+        color = _change_color(row) if directional else _FLAT
         cells.append(
             f"""
             <tr>
@@ -88,7 +103,7 @@ def _section_html(title: str, body_html: str) -> str:
 
 def _headlines_html(brief: Brief) -> str:
     if not brief.synthesis.headlines:
-        return '<div style="color:%s;">No standout industry items in the last window.</div>' % _MUTED
+        return '<div style="color:%s;">No standout multifamily or construction items in the last window.</div>' % _MUTED
     items = []
     for h in brief.synthesis.headlines:
         src = _esc(h.source)
@@ -134,6 +149,36 @@ def _unsubscribe_html(unsubscribe_link: Optional[str]) -> str:
           </table>"""
 
 
+def _pulse_html(brief: Brief) -> str:
+    """The monthly Development Pulse table, or '' when no series resolved."""
+    if not brief.pulse:
+        return ""
+    month = _pulse_month(brief.pulse)
+    month_note = f"Latest monthly print: {_esc(month)}. " if month else ""
+    return f"""
+      <tr><td style="padding:22px 24px 0 24px;">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+                    color:{_ACCENT};border-bottom:2px solid {_ACCENT};padding-bottom:6px;margin-bottom:10px;">
+          Development Pulse
+        </div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="border:1px solid {_RULE};border-radius:6px;overflow:hidden;">
+          <tr style="background:{_BG};">
+            <td style="padding:8px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;
+                       text-transform:uppercase;color:{_MUTED};">Series</td>
+            <td style="padding:8px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;
+                       text-transform:uppercase;color:{_MUTED};text-align:right;">Level</td>
+            <td style="padding:8px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;
+                       text-transform:uppercase;color:{_MUTED};text-align:right;">Δ m/m</td>
+          </tr>
+          {_tape_rows_html(brief.pulse, directional=False)}
+        </table>
+        <div style="font-size:12px;line-height:1.5;color:{_MUTED};margin-top:8px;">
+          {month_note}Census/HUD monthly data via FRED; thousands of units, seasonally adjusted annual rate.
+        </div>
+      </td></tr>"""
+
+
 def render_html(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
     """Return the full HTML email body for ``brief``.
 
@@ -154,7 +199,7 @@ def render_html(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
 </head>
 <body style="margin:0;padding:0;background:{_BG};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-  The Tape, Fed Watch, CMBS Watch and the day's CRE deal flow.
+  The Tape, the Development Pulse, Fed Watch, Lending Watch and the day's multifamily construction headlines.
 </div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{_BG};">
   <tr><td align="center" style="padding:20px 12px;">
@@ -168,7 +213,7 @@ def render_html(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
           CRE Finance Brief
         </div>
         <div style="font-size:13px;color:#cbd7e0;margin-top:2px;">
-          {_esc(brief.date_str)} &middot; Commercial real estate &amp; CMBS
+          {_esc(brief.date_str)} &middot; Multifamily construction finance
         </div>
       </td></tr>
 
@@ -195,9 +240,11 @@ def render_html(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
         </div>
       </td></tr>
 
+      {_pulse_html(brief)}
+
       {_section_html("Fed Watch", _prose(s.fed_watch) or "No fresh monetary-policy items in the last window.")}
-      {_section_html("CMBS Watch", _prose(s.cmbs_watch) or "No fresh CMBS or CRE-credit items in the last window.")}
-      {_section_html("Industry Headlines", _headlines_html(brief))}
+      {_section_html("Lending Watch", _prose(s.lending_watch) or "No fresh construction-lending or credit items in the last window.")}
+      {_section_html("Multifamily & Construction Headlines", _headlines_html(brief))}
       {_section_html("One to Watch", _prose(s.one_to_watch) or "—")}
 
       <!-- Footer -->
@@ -233,7 +280,7 @@ def render_text(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
     s = brief.synthesis
     out: List[str] = []
     out.append("CRE FINANCE BRIEF")
-    out.append(brief.date_str + "  |  Commercial real estate & CMBS")
+    out.append(brief.date_str + "  |  Multifamily construction finance")
     out.append("=" * 60)
     out.append("")
 
@@ -250,6 +297,22 @@ def render_text(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
         out.append(s.tape_context)
         out.append("")
 
+    # Development Pulse (monthly)
+    if brief.pulse:
+        out.append("DEVELOPMENT PULSE")
+        out.append(_rule())
+        pulse_w = max((len(r.label) for r in brief.pulse), default=12)
+        for r in brief.pulse:
+            out.append(
+                f"{r.label.ljust(pulse_w)}   {r.level_display.rjust(12)}   {r.change_display.rjust(10)}"
+            )
+        month = _pulse_month(brief.pulse)
+        note = "Census/HUD monthly data via FRED; thousands of units, SAAR."
+        if month:
+            note = f"Latest monthly print: {month}. " + note
+        out.append(note)
+        out.append("")
+
     def block(title: str, body: str, empty: str) -> None:
         out.append(title.upper())
         out.append(_rule())
@@ -257,9 +320,10 @@ def render_text(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
         out.append("")
 
     block("Fed Watch", s.fed_watch, "No fresh monetary-policy items in the last window.")
-    block("CMBS Watch", s.cmbs_watch, "No fresh CMBS or CRE-credit items in the last window.")
+    block("Lending Watch", s.lending_watch,
+          "No fresh construction-lending or credit items in the last window.")
 
-    out.append("INDUSTRY HEADLINES")
+    out.append("MULTIFAMILY & CONSTRUCTION HEADLINES")
     out.append(_rule())
     if brief.synthesis.headlines:
         for h in brief.synthesis.headlines:
@@ -270,7 +334,7 @@ def render_text(brief: Brief, unsubscribe_link: Optional[str] = None) -> str:
                 out.append(f"  {h.link}")
             out.append("")
     else:
-        out.append("No standout industry items in the last window.")
+        out.append("No standout multifamily or construction items in the last window.")
         out.append("")
 
     out.append("ONE TO WATCH")
